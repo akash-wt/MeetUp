@@ -1,32 +1,30 @@
-import { useSetRecoilState } from "recoil";
-import { currentRoomIdState } from "../store/roomState";
 import socket from "../lib/socket";
 import { getMediasoupDevice } from "../lib/mediasoup";
-import useCreateRoom from "./useCreateRoom";
+import useCreateRoomId from "./useCreateRoomId";
+import { types as mediasoupTypes, Device } from "mediasoup-client";
+import { useState } from "react";
 
 const useJoinRoom = () => {
-    const roomId = useCreateRoom();
-    console.log(roomId);
+  const [device, setDevice] = useState<Device | null>(null);
+  const roomId = useCreateRoomId();
+  console.log("room id " + roomId);
 
+  const joinRoom = () => {
+    socket.emit(
+      "joinRoom",
+      roomId,
+      async (rtpCapabilities: mediasoupTypes.RtpCapabilities) => {
+        try {
+          const newDevice = await getMediasoupDevice(rtpCapabilities);
+          setDevice(newDevice);
+          // console.log("device id " + JSON.stringify(device));
+        } catch (err) {
+          console.log("error " + err);
+        }
+      }
+    );
+  };
 
-    const joinRoom = async (roomId: string) => {
-        
-        return new Promise(async (resolve, reject) => {
-            socket.emit("joinRoom", roomId, async (response) => {
-                if ("error" in response) {
-                    reject(response.error);
-                    return;
-                }
-
-
-
-                const device = await getMediasoupDevice(response.rtpCapabilities);
-                resolve(device);
-            });
-        });
-    };
-
-    return joinRoom;
+  return { device, joinRoom };
 };
-
 export default useJoinRoom;

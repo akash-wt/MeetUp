@@ -3,10 +3,23 @@ import { types as mediasoupTypes } from "mediasoup-client";
 
 let device: Device | null = null;
 
-export const getMediasoupDevice = async (rtpCapabilities: mediasoupTypes.RtpCapabilities): Promise<Device> => {
+export const getMediasoupDevice = async (
+  rtpCapabilities: mediasoupTypes.RtpCapabilities
+): Promise<Device> => {
   if (!device) {
     device = new Device();
-    await device.load({ routerRtpCapabilities: rtpCapabilities });
+
+    console.log(
+      "rtpCapabilities from server:",
+      JSON.stringify(rtpCapabilities)
+    );
+
+    try {
+      await device.load({ routerRtpCapabilities: rtpCapabilities });
+      console.log("Device loaded successfully:", JSON.stringify(device));
+    } catch (err) {
+      console.log("Error loading device:", err);
+    }
   }
   return device;
 };
