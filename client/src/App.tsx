@@ -1,5 +1,6 @@
 import Room from './pages/Room';
 import ErrorBoundary from './components/ErrorBoundry';
+import "./App.css"
 
 function App() {
 return (

@@ -1,17 +1,17 @@
 import { Device } from "mediasoup-client";
-import { types as mediasoupTypes } from "mediasoup-client";
-
-export const getMediasoupDevice = async (
-  rtpCapabilities: mediasoupTypes.RtpCapabilities,
-  
-) => {
+export const getMediasoupDevice = async (rtpCapabilities: any) => {
   try {
+    rtpCapabilities = {
+      codecs: rtpCapabilities.rtpCapabilities.codecs,
+      headerExtensions: rtpCapabilities.rtpCapabilities.headerExtensions,
+    };
 
-    console.log(rtpCapabilities);
+    console.log("before loaddeding ", rtpCapabilities);
     const device = new Device();
-    await device.load({ routerRtpCapabilities: rtpCapabilities })
+
+    await device.load({ routerRtpCapabilities: rtpCapabilities });
+
     return device;
-    
   } catch (err) {
     console.error("Error loading device:", err);
     throw err;
