@@ -1,7 +1,7 @@
+// hooks/useMediaStream.ts
 import { useState, useEffect } from 'react';
 
 export const useMediaStream = () => {
-    
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [permissionDenied, setPermissionDenied] = useState(false);
 

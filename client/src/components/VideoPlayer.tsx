@@ -1,3 +1,4 @@
+// components/VideoPlayer.tsx
 import { useEffect, useRef } from 'react';
 
 interface VideoPlayerProps {

@@ -1,7 +1,7 @@
+// components/Controls.tsx
 import { Button } from "../components/Button";
 
 interface ControlsProps {
-
     startCall: () => void;
     leaveCall: () => void;
 }
