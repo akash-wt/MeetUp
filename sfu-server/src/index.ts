@@ -6,6 +6,7 @@ import { createMediasoupWorker } from "./signaling/worker";
 import { createRoom, getRoom } from "./signaling/rooms";
 import { createWebRtcTransport } from "./signaling/transports";
 import { types as mediasoupTypes } from "mediasoup";
+import { log } from "console";
 
 dotenv.config();
 
@@ -64,7 +65,7 @@ io.on("connection", async (socket) => {
     socket.on(
         "createWebRtcTransport",
         async (
-            payload: { roomId: string },
+            payload: { roomId: string, direction: "send" | "recv", peerId: string },
             callback: (
                 response: Partial<{
                     id: string;
@@ -80,12 +81,14 @@ io.on("connection", async (socket) => {
                 const router = getRoom(payload.roomId);
                 if (!router) return callback({ error: "Room not found" });
 
-                const transport = await createWebRtcTransport(router);
+                const transport = await createWebRtcTransport(router, payload.direction, payload.peerId);
                 const peer = roomPeers.get(payload.roomId)?.get(socket.id);
                 if (!peer) return callback({ error: "Peer not found" });
 
                 peer.transports.push(transport);
                 console.log("Transport created", transport.id);
+                console.log("iceCandidate ", transport.iceCandidates);
+                console.log("peerId :" + payload.peerId);
                 callback({
                     id: transport.id,
                     iceParameters: transport.iceParameters,
