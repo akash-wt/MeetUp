@@ -6,7 +6,9 @@ import { mediaCodecs } from '../config';
 const rooms = new Map<string, mediasoupTypes.Router>();
 
 export const createRoom = async (roomId: string) => {
+
     if (rooms.has(roomId)) return rooms.get(roomId);
+    
     const worker = getWorker();
     const router = await worker.createRouter({ mediaCodecs });
     rooms.set(roomId, router);

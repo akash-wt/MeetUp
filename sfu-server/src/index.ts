@@ -29,6 +29,7 @@ const roomPeers = new Map<string, Map<string, Peer>>();
 io.on("connection", async (socket) => {
     console.log(`Socket Client connected: ${socket.id}`);
 
+
     socket.on(
         "joinRoom",
         async (
@@ -36,6 +37,11 @@ io.on("connection", async (socket) => {
             callback: (response: { rtpCapabilities: mediasoupTypes.RtpCapabilities } | { error: string }) => void
         ) => {
             try {
+                if (!roomId) {
+                    console.log("not roomId found in joinRoom");
+                    return
+
+                }
                 let router = getRoom(roomId);
                 if (!router) {
                     router = await createRoom(roomId);
@@ -45,21 +51,23 @@ io.on("connection", async (socket) => {
                     roomPeers.set(roomId, new Map());
                 }
 
-                const peers = roomPeers.get(roomId)!;
-                peers.set(socket.id, {
-                    transports: [],
-                    producers: [],
-                    consumers: [],
-                });
+                const peers = roomPeers.get(roomId);
+                if (peers)
+                    peers.set(socket.id, {
+                        transports: [],
+                        producers: [],
+                        consumers: [],
+                    });
 
                 console.log(`Client ${socket.id} joined room ${roomId}`);
-                // @ts-ignore
-                callback({ rtpCapabilities: router.rtpCapabilities });
+
+                callback({ rtpCapabilities: router!.rtpCapabilities });
             } catch (err: any) {
                 callback({ error: err.message });
             }
         }
     );
+
 
     // Creating WebRTC Transport
     socket.on(
