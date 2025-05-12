@@ -6,7 +6,6 @@ export const getMediasoupDevice = async (rtpCapabilities: any) => {
       headerExtensions: rtpCapabilities.rtpCapabilities.headerExtensions,
     };
 
-    console.log("before loaddeding ", rtpCapabilities);
     const device = new Device();
 
     await device.load({ routerRtpCapabilities: rtpCapabilities });

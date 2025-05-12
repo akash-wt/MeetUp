@@ -1,12 +1,11 @@
 import { types as mediasoupTypes } from "mediasoup";
 import { webRtcTransport_options } from "../config";
 
-export const createWebRtcTransport = async (router: mediasoupTypes.Router, direction: 'send' | 'recv', peerId: string) => {
+export const createWebRtcTransport = async (router: mediasoupTypes.Router, peerId: string) => {
 
     const transport = await router.createWebRtcTransport({
         ...webRtcTransport_options, appData: {
-            peerId,
-            clientDirection: direction,
+            peerId
         }
     });
 

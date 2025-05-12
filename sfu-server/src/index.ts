@@ -68,18 +68,17 @@ io.on("connection", async (socket) => {
         }
     );
 
-
-    // Creating WebRTC Transport
     socket.on(
         "createWebRtcTransport",
         async (
-            payload: { roomId: string, direction: "send" | "recv", peerId: string },
+            payload: { roomId: string, peerId: string },
             callback: (
                 response: Partial<{
                     id: string;
                     iceParameters: any;
                     iceCandidates: any[];
                     dtlsParameters: any;
+                    peerId: string
                 }> & {
                     error?: string;
                 }
@@ -89,19 +88,18 @@ io.on("connection", async (socket) => {
                 const router = getRoom(payload.roomId);
                 if (!router) return callback({ error: "Room not found" });
 
-                const transport = await createWebRtcTransport(router, payload.direction, payload.peerId);
+                const transport = await createWebRtcTransport(router, payload.peerId);
                 const peer = roomPeers.get(payload.roomId)?.get(socket.id);
                 if (!peer) return callback({ error: "Peer not found" });
 
                 peer.transports.push(transport);
-                console.log("Transport created", transport.id);
-                console.log("iceCandidate ", transport.iceCandidates);
-                console.log("peerId :" + payload.peerId);
+
                 callback({
                     id: transport.id,
                     iceParameters: transport.iceParameters,
                     iceCandidates: transport.iceCandidates,
                     dtlsParameters: transport.dtlsParameters,
+                    peerId: transport.appData.peerId
                 });
             } catch (err: any) {
                 console.error("createWebRtcTransport error:", err);
@@ -110,11 +108,11 @@ io.on("connection", async (socket) => {
         }
     );
 
-    // Connecting WebRTC Transport
+   
     socket.on(
         "connectTransport",
         async (
-            payload: { roomId: string; transportId: string; dtlsParameters: any },
+            payload: { roomId: string; transportId: string; dtlsParameters: mediasoupTypes.DtlsParameters },
             callback: (response?: { error: string }) => void
         ) => {
             const peer = roomPeers.get(payload.roomId)?.get(socket.id);
@@ -130,7 +128,7 @@ io.on("connection", async (socket) => {
         }
     );
 
-    // Producing media
+   
     socket.on(
         "produce",
         async (
@@ -138,7 +136,7 @@ io.on("connection", async (socket) => {
                 roomId: string;
                 transportId: string;
                 kind: mediasoupTypes.MediaKind;
-                rtpParameters: any;
+                rtpParameters: mediasoupTypes.RtpParameters;
             },
             callback: (response: { id: string } | { error: string }) => void
         ) => {
@@ -168,7 +166,7 @@ io.on("connection", async (socket) => {
                 roomId: string;
                 transportId: string;
                 producerId: string;
-                rtpCapabilities: any;
+                rtpCapabilities: mediasoupTypes.RtpCapabilities;
             },
             callback: (
                 response:

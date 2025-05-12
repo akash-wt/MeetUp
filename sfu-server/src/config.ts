@@ -30,5 +30,6 @@ export const webRtcTransport_options: mediasoupTypes.WebRtcTransportOptions = {
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,
+    initialAvailableOutgoingBitrate: 1000000
 };
 
