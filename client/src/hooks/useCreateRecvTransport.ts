@@ -11,7 +11,7 @@ export const useCreateRecvTransport = () => {
     const device = useRecoilValue(currentDevice);
     const createRecvTransportOnServer = useTransport(roomId!);
 
-  
+
     const createRecvTransport = async () => {
         const transport = await createRecvTransportOnServer();
         console.log("Producer Transport", transport);

@@ -17,19 +17,21 @@ export const mediaCodecs: mediasoupTypes.RtpCodecCapability[] = [
     },
 ];
 
+
 export const webRtcTransport_options: mediasoupTypes.WebRtcTransportOptions = {
     listenIps:
         process.env.NODE_ENV === 'production'
             ? [
                 {
-                    ip: process.env.WEBRTC_LISTEN_IP || '0.0.0.0',
+                    ip: process.env.WEBRTC_LISTEN_IP || '127.0.0.1',
                     announcedIp: process.env.WEBRTC_ANNOUNCED_IP || '127.0.0.1',
                 },
             ]
             : [{ ip: '0.0.0.0' }],
+
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,
-    initialAvailableOutgoingBitrate: 1000000
+    
 };
 

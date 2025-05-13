@@ -1,9 +1,3 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-#remoteVideo {
-  width: 100%;
-  height: auto;
-  display: block;
-}

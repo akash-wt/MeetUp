@@ -2,20 +2,11 @@ import { useRecoilValue } from "recoil";
 import { useJoinRoom } from "../hooks/useJoinRoom";
 import { currentDevice } from "../store/deviceState";
 import { currentRoomIdState } from "../store/roomState";
-import { useTransport } from "../hooks/useCreateTransport";
 import socket from "../lib/socket";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { types as mediasoupTypes } from "mediasoup-client";
 import { useCreateSendTransport } from "../hooks/useCreateSendTransport.ts";
 import { useCreateRecvTransport } from "../hooks/useCreateRecvTransport.ts";
-
-// type TransportResponse = Partial<{
-//   id: string;
-//   iceParameters: mediasoupTypes.IceParameters;
-//   iceCandidates: mediasoupTypes.IceCandidate[];
-//   dtlsParameters: mediasoupTypes.DtlsParameters;
-//   peerId: string;
-// }>;
 
 const RoomPage = () => {
   const roomId = useRecoilValue(currentRoomIdState);
@@ -25,6 +16,7 @@ const RoomPage = () => {
   const { createRecvTransport } = useCreateRecvTransport();
   const localMediaRef = useRef<HTMLVideoElement | null>(null);
   const recvTransportRef = useRef<mediasoupTypes.Transport | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<MediaStream[]>([]);
 
   const joinRoom = useJoinRoom();
 
@@ -42,9 +34,7 @@ const RoomPage = () => {
     if (localMediaRef.current) {
       localMediaRef.current.srcObject = stream;
     }
-
-  }
-
+  };
 
   const getRecvTransport = async () => {
     const recvTransport = await createRecvTransport();
@@ -53,17 +43,13 @@ const RoomPage = () => {
       return;
     }
     recvTransportRef.current = recvTransport;
-
-
   };
 
   // const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const handleJoinRoom = async () => {
     await joinRoom();
-
   };
-
 
   const consumeProducer = async () => {
     if (!device) {
@@ -81,11 +67,21 @@ const RoomPage = () => {
       return;
     }
 
-    socket.emit("consume", { roomId, transportId: recvTransportRef.current.id, producerId, rtpCapabilities },
-      async (data: {
-        id: string, producerId: string, kind: mediasoupTypes.MediaKind, rtpParameters: mediasoupTypes.RtpParameters
-      } | { error: string }) => {
-
+    socket.emit(
+      "consume",
+      {
+        roomId,
+        transportId: recvTransportRef.current.id,
+        producerId,
+        rtpCapabilities,
+      },
+      async (
+        data: | {
+          id: string;
+          producerId: string;
+          kind: mediasoupTypes.MediaKind;
+          rtpParameters: mediasoupTypes.RtpParameters;
+        } | { error: string }) => {
         if ("error" in data) {
           console.error(`Consume error: ${data.error}`);
           return;
@@ -100,52 +96,27 @@ const RoomPage = () => {
             producerId,
             kind,
             rtpParameters,
+
           });
 
+          if (recvTransportRef.current) {
+            recvTransportRef.current.on("connectionstatechange", (state) => {
+              console.log("Receive Transport state:", state);
+            });
+          }
+
           consumer.resume();
+          const remoteStream = new MediaStream();
+          remoteStream.addTrack(consumer.track);
+          setRemoteStreams((prev: MediaStream[]) => [...prev, remoteStream]);
 
-          const { track } = consumer;
-
-
-          const remoteStream = new MediaStream([track]);
-          console.log(remoteStream);
-
-
-          if (remoteStream.getTracks().length > 0) {
-            console.log("Tracks are available");
-          } else {
-            console.error("No tracks available in the MediaStream");
-          }
-
-          // Get the video element and assign the stream
-          const remoteVideo = document.getElementById("remoteVideo") as HTMLVideoElement;
-
-          if (remoteVideo) {
-            // Attach the MediaStream to the video element
-            // if (localMediaRef.current) {
-            //   localMediaRef.current.srcObject = remoteStream;
-            // } else {
-            //   console.error("localMediaRef.current is null");
-            // }
-
-            if (localMediaRef.current) {
-              localMediaRef.current.srcObject = null; // Reset old stream
-              localMediaRef.current.srcObject = remoteStream; // Assign new stream
-            }
+          console.log("Track ", consumer.track);
+          console.log("consumer ", consumer);
 
 
-
-
-          } else {
-            console.error("Failed to find the remote video element.");
-          }
-
-          // Unmute the track if needed
-          track.enabled = true;  // Unmute the video
         } catch (e) {
           console.error("Error consuming producer", e);
         }
-
       }
     );
   };
@@ -166,24 +137,33 @@ const RoomPage = () => {
       <br />
       <button onClick={handleJoinRoom}>1. Join Room</button>
       <br />
-      <button onClick={createSendStream}>2. Create Send Transport && Start Stream</button>
+      <button onClick={createSendStream}>
+        2. Create Send Transport && Start Stream
+      </button>
       <br />
       <button onClick={getRecvTransport}>4. Create Receive Transport</button>
       <br />
       <button onClick={consumeProducer}>5. Consume Producer</button>
       <br />
-      <h2>Remote Stream</h2>
-      <video
-        ref={localMediaRef}
-        id="remoteVideo"
-        playsInline
-        autoPlay
-        muted
-        controls
-      ></video>
+      <div id="remote-media">
+        {remoteStreams.map((stream: MediaStream, i: number) => (
+          <video
+            key={i}
+            autoPlay
+            playsInline
+            controls
+            muted
+            ref={(video) => {
+              if (video) {
+                video.srcObject = stream;
+              }
+            }}
+          />
+        ))}
+      </div>
+
     </div>
   );
 };
-
 
 export default RoomPage;
