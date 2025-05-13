@@ -22,7 +22,7 @@ export const webRtcTransport_options: mediasoupTypes.WebRtcTransportOptions = {
         process.env.NODE_ENV === 'production'
             ? [
                 {
-                    ip: process.env.WEBRTC_LISTEN_IP || '127.0.0.1',
+                    ip: process.env.WEBRTC_LISTEN_IP || '0.0.0.0',
                     announcedIp: process.env.WEBRTC_ANNOUNCED_IP || '127.0.0.1',
                 },
             ]

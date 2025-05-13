@@ -1,12 +1,10 @@
 import { types as mediasoupTypes } from "mediasoup";
 import { webRtcTransport_options } from "../config";
 
-export const createWebRtcTransport = async (router: mediasoupTypes.Router, peerId: string) => {
+export const createWebRtcTransport = async (router: mediasoupTypes.Router) => {
 
     const transport = await router.createWebRtcTransport({
-        ...webRtcTransport_options, appData: {
-            peerId
-        }
+        ...webRtcTransport_options
     });
 
     console.log(`Created WebRTC Transport: ${transport.id}`);

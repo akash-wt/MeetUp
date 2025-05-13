@@ -47,17 +47,17 @@ io.on("connection", async (socket) => {
                     router = await createRoom(roomId);
                 }
 
-                if (!roomPeers.has(roomId)) {
-                    roomPeers.set(roomId, new Map());
+                let roomMap = roomPeers.get(roomId);
+                if (!roomMap) {
+                    roomMap = new Map();
+                    roomPeers.set(roomId, roomMap);
                 }
+                roomMap.set(socket.id, {
+                    transports: [],
+                    producers: [],
+                    consumers: [],
+                });
 
-                const peers = roomPeers.get(roomId);
-                if (peers)
-                    peers.set(socket.id, {
-                        transports: [],
-                        producers: [],
-                        consumers: [],
-                    });
 
                 console.log(`Client ${socket.id} joined room ${roomId}`);
 
@@ -71,14 +71,13 @@ io.on("connection", async (socket) => {
     socket.on(
         "createWebRtcTransport",
         async (
-            payload: { roomId: string, peerId: string },
+            payload: { roomId: string },
             callback: (
                 response: Partial<{
                     id: string;
                     iceParameters: any;
                     iceCandidates: any[];
                     dtlsParameters: any;
-                    peerId: string
                 }> & {
                     error?: string;
                 }
@@ -88,7 +87,8 @@ io.on("connection", async (socket) => {
                 const router = getRoom(payload.roomId);
                 if (!router) return callback({ error: "Room not found" });
 
-                const transport = await createWebRtcTransport(router, payload.peerId);
+                const transport = await createWebRtcTransport(router);
+                
                 const peer = roomPeers.get(payload.roomId)?.get(socket.id);
                 if (!peer) return callback({ error: "Peer not found" });
 
@@ -99,7 +99,6 @@ io.on("connection", async (socket) => {
                     iceParameters: transport.iceParameters,
                     iceCandidates: transport.iceCandidates,
                     dtlsParameters: transport.dtlsParameters,
-                    peerId: transport.appData.peerId
                 });
             } catch (err: any) {
                 console.error("createWebRtcTransport error:", err);
@@ -108,7 +107,7 @@ io.on("connection", async (socket) => {
         }
     );
 
-   
+
     socket.on(
         "connectTransport",
         async (
@@ -128,7 +127,6 @@ io.on("connection", async (socket) => {
         }
     );
 
-   
     socket.on(
         "produce",
         async (
@@ -152,6 +150,7 @@ io.on("connection", async (socket) => {
                 kind: payload.kind,
                 rtpParameters: payload.rtpParameters,
             });
+            
             peer.producers.push(producer);
 
             console.log(`Producer created: ${producer.id} in room ${payload.roomId}`);
@@ -174,7 +173,7 @@ io.on("connection", async (socket) => {
                         id: string;
                         producerId: string;
                         kind: mediasoupTypes.MediaKind;
-                        rtpParameters: any;
+                        rtpParameters: mediasoupTypes.RtpParameters;
                     }
                     | { error: string }
             ) => void
@@ -202,10 +201,20 @@ io.on("connection", async (socket) => {
             const consumer = await transport.consume({
                 producerId: payload.producerId,
                 rtpCapabilities: payload.rtpCapabilities,
-                paused: false,
+                paused: true,
             });
 
-            peer.consumers.push(consumer);
+            consumer.on('transportclose', () => {
+                console.log('transport close from consumer')
+            })
+
+            consumer.on('producerclose', () => {
+                console.log('producer of consumer closed')
+                consumer.close()
+
+            })
+
+            peer.consumers.push(consumer);;
 
             callback({
                 id: consumer.id,
@@ -215,6 +224,28 @@ io.on("connection", async (socket) => {
             });
         }
     );
+
+    socket.on("getProducers", (roomId: string, callback: (response: { producerIds: string[] } | { error: string }) => void) => {
+        console.log(`Fetching producers for room: ${roomId}`);
+        const peersInRoom = roomPeers.get(roomId);
+        console.log("peersInRoom ", peersInRoom);
+
+        if (!peersInRoom) {
+            console.log(`Room not found: ${roomId}`);
+            return callback({ error: "Room not found" });
+        }
+
+        const producerIds: string[] = [];
+        peersInRoom.forEach((peer) => {
+            peer.producers.forEach((producer) => {
+                producerIds.push(producer.id);
+            });
+        });
+
+        callback({ producerIds });
+    });
+
+
 
     // Client disconnect
     socket.on("disconnect", () => {
