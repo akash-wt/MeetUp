@@ -31,12 +31,15 @@ export const useCreateRecvTransport = () => {
             id: transport.id,
             iceParameters: transport.iceParameters,
             iceCandidates: transport.iceCandidates,
-            dtlsParameters: JSON.parse(JSON.stringify(transport.dtlsParameters)),
+            dtlsParameters: transport.dtlsParameters
         });
 
         recvTransport.on("connect", ({ dtlsParameters }, callback, errBack) => {
             try {
-                socket.emit("connectTransport", { transportId: recvTransport.id, dtlsParameters }, callback);
+                socket.emit("connectTransport", { roomId, transportId: recvTransport.id, dtlsParameters },
+                 
+
+                    callback);
             } catch (e) {
                 errBack(e instanceof Error ? e : new Error("An error occurred while connecting recv transport"));
             }

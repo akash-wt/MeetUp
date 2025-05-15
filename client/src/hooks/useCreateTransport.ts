@@ -14,10 +14,12 @@ export function useTransport(roomId: string) {
 
     const createTransport = (): Promise<TransportResponse | null> => {
         return new Promise((resolve, reject) => {
-            socket.emit("createWebRtcTransport", { roomId }, (trnasport: TransportResponse) => {
-                if (trnasport.id) {
-                    resolve(trnasport);
-                    return trnasport
+            socket.emit("createWebRtcTransport", { roomId }, (transport: TransportResponse) => {
+                if (transport.id) {
+                    resolve(transport);
+                    console.log("createWebRtcTransport ", transport.id);
+
+                    return transport
                 }
                 else {
                     reject("Transport creation failed");

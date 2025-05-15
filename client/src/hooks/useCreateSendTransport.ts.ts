@@ -14,8 +14,6 @@ export const useCreateSendTransport = () => {
 
     const createSendTransport = async () => {
         const transport = await createSendTransportOnServer();
-        console.log("Producer Transport", transport);
-
         if (
             !device ||
             !transport?.id ||
@@ -33,14 +31,22 @@ export const useCreateSendTransport = () => {
             iceCandidates: transport.iceCandidates,
             dtlsParameters: JSON.parse(JSON.stringify(transport.dtlsParameters)),
         });
+        console.log("sendTransport ", sendTransport.id);
 
         sendTransport.on("connect", ({ dtlsParameters }, callback, errBack) => {
             try {
-                socket.emit("connectTransport", { transportId: sendTransport.id, dtlsParameters }, callback);
+
+                console.log(sendTransport.id);
+
+                socket.emit("connectTransport", { roomId, transportId: sendTransport.id, dtlsParameters }, () => {
+                    console.log("Send transport connected successfully.");
+                    callback();
+                });
             } catch (e) {
                 errBack(e instanceof Error ? e : new Error("An error occurred while connecting send transport"));
             }
         });
+
 
         sendTransport.on("produce", ({ kind, rtpParameters }, callback, errBack) => {
             try {
