@@ -45,8 +45,6 @@ const RoomPage = () => {
     recvTransportRef.current = recvTransport;
   };
 
-  // const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
   const handleJoinRoom = async () => {
     await joinRoom();
   };

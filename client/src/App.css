@@ -1,12 +1,9 @@
-body {
-  color: whitesmoke;
-  background-color: black;
-}
+
 
 #root {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem;
+  /* padding: 2rem; */
   text-align: center;
 }
 

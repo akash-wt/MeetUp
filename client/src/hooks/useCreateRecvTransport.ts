@@ -14,7 +14,7 @@ export const useCreateRecvTransport = () => {
 
     const createRecvTransport = async () => {
         const transport = await createRecvTransportOnServer();
-        console.log("Producer Transport", transport);
+        console.log("Recv Transport", transport);
 
         if (
             !device ||
