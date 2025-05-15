@@ -12,10 +12,13 @@ export const mediaCodecs: mediasoupTypes.RtpCodecCapability[] = [
         mimeType: 'video/VP8',
         clockRate: 90000,
         parameters: {
-            'x-google-start-bitrate': 300,
+            'x-google-start-bitrate': 1000,
+            "packetization-mode": 1,
+            "profile-level-id": "42e01f",
+            "level-asymmetry-allowed": 1
         },
     },
-];
+]
 
 
 export const webRtcTransport_options: mediasoupTypes.WebRtcTransportOptions = {
@@ -27,11 +30,11 @@ export const webRtcTransport_options: mediasoupTypes.WebRtcTransportOptions = {
                     announcedIp: process.env.WEBRTC_ANNOUNCED_IP || '127.0.0.1',
                 },
             ]
-            : [{ ip: '0.0.0.0' }],
+            : [{ ip: '192.168.240.135' }],
 
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,
-    
+
 };
 

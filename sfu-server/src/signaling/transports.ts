@@ -8,6 +8,7 @@ export const createWebRtcTransport = async (router: mediasoupTypes.Router) => {
     });
 
     console.log(`Created WebRTC Transport: ${transport.id}`);
+    
     transport.on('dtlsstatechange', (state: mediasoupTypes.DtlsState) => {
         if (state === 'closed') {
             console.log(`Transport ${transport.id} closed`);

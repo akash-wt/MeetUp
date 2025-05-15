@@ -6,7 +6,7 @@ import { createMediasoupWorker } from "./signaling/worker";
 import { createRoom, getRoom } from "./signaling/rooms";
 import { createWebRtcTransport } from "./signaling/transports";
 import { types as mediasoupTypes } from "mediasoup";
-import { log } from "console";
+
 
 dotenv.config();
 
@@ -23,7 +23,6 @@ type Peer = {
     consumers: mediasoupTypes.Consumer[];
 };
 
-const peers = new Map<string, Peer>();
 const roomPeers = new Map<string, Map<string, Peer>>();
 
 io.on("connection", async (socket) => {
@@ -88,7 +87,7 @@ io.on("connection", async (socket) => {
                 if (!router) return callback({ error: "Room not found" });
 
                 const transport = await createWebRtcTransport(router);
-                
+
                 const peer = roomPeers.get(payload.roomId)?.get(socket.id);
                 if (!peer) return callback({ error: "Peer not found" });
 
@@ -150,13 +149,14 @@ io.on("connection", async (socket) => {
                 kind: payload.kind,
                 rtpParameters: payload.rtpParameters,
             });
-            
+
             peer.producers.push(producer);
 
             console.log(`Producer created: ${producer.id} in room ${payload.roomId}`);
             callback({ id: producer.id });
         }
     );
+
 
     socket.on(
         "consume",
@@ -178,11 +178,16 @@ io.on("connection", async (socket) => {
                     | { error: string }
             ) => void
         ) => {
+
+
             const router = getRoom(payload.roomId);
             if (!router) return callback({ error: "Room not found" });
 
             const peer = roomPeers.get(payload.roomId)?.get(socket.id);
             if (!peer) return callback({ error: "Peer not found" });
+
+
+
 
             if (
                 !router.canConsume({
@@ -193,9 +198,12 @@ io.on("connection", async (socket) => {
                 return callback({ error: "Cannot consume this producer" });
             }
 
+
             const transport = peer.transports.find(
                 (t) => t.id === payload.transportId
             );
+
+
             if (!transport) return callback({ error: "Transport not found" });
 
             const consumer = await transport.consume({
@@ -204,17 +212,8 @@ io.on("connection", async (socket) => {
                 paused: true,
             });
 
-            consumer.on('transportclose', () => {
-                console.log('transport close from consumer')
-            })
 
-            consumer.on('producerclose', () => {
-                console.log('producer of consumer closed')
-                consumer.close()
-
-            })
-
-            peer.consumers.push(consumer);;
+            peer.consumers.push(consumer);
 
             callback({
                 id: consumer.id,
@@ -222,29 +221,10 @@ io.on("connection", async (socket) => {
                 kind: consumer.kind,
                 rtpParameters: consumer.rtpParameters,
             });
+
+
         }
     );
-
-    socket.on("getProducers", (roomId: string, callback: (response: { producerIds: string[] } | { error: string }) => void) => {
-        console.log(`Fetching producers for room: ${roomId}`);
-        const peersInRoom = roomPeers.get(roomId);
-        console.log("peersInRoom ", peersInRoom);
-
-        if (!peersInRoom) {
-            console.log(`Room not found: ${roomId}`);
-            return callback({ error: "Room not found" });
-        }
-
-        const producerIds: string[] = [];
-        peersInRoom.forEach((peer) => {
-            peer.producers.forEach((producer) => {
-                producerIds.push(producer.id);
-            });
-        });
-
-        callback({ producerIds });
-    });
-
 
 
     // Client disconnect

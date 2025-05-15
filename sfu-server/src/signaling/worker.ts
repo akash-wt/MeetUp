@@ -1,24 +1,19 @@
+import { log } from 'console';
 import { createWorker } from 'mediasoup';
 import { types as mediasoupTypes } from "mediasoup";
-import os from "os"
+import * as mediasoup from "mediasoup";
 
 let worker: mediasoupTypes.Worker;
 
 export const createMediasoupWorker = async () => {
-
-
     worker = await createWorker({
         logLevel: 'debug',
-        rtcMinPort: 6002,
-        rtcMaxPort: 6202
+        rtcMinPort: 2000,
+        rtcMaxPort: 2020
     });
 
 
-    const numWorkers = os.cpus().length;
-    console.log(numWorkers + " worker can be created");
-
     console.log(`Worker PID: ${worker.pid}`);
-
     worker.on('died', () => {
         console.error('Mediasoup Worker died, exiting process...');
         process.exit(1);
