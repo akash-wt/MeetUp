@@ -3,20 +3,15 @@ import { webRtcTransport_options } from "../config";
 
 export const createWebRtcTransport = async (router: mediasoupTypes.Router) => {
 
-    // const transport = await router.createWebRtcTransport({
-    //     ...webRtcTransport_options
-    // });
     const transport = await router.createWebRtcTransport({
-        listenIps: [{ ip: "192.168.240.135" }],
-        enableUdp: true,
-        enableTcp: true,
-        preferUdp: true,
+        ...webRtcTransport_options
     });
 
-    transport.on("icestatechange", (state) =>
+
+    transport.on("icestatechange", (state: mediasoupTypes.IceState) =>
         console.log(`Transport ${transport.id} ICE state: ${state}`)
     );
-    
+
     console.log(`Created WebRTC Transport: ${transport.id}`);
 
     transport.on('dtlsstatechange', (state: mediasoupTypes.DtlsState) => {

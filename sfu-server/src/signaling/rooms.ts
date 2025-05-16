@@ -4,17 +4,14 @@ import { mediaCodecs } from '../config';
 
 const rooms = new Map<string, mediasoupTypes.Router>();
 
-export const createRoom = async (roomId: string) => {
+export const GetRoom = async (roomId: string): Promise<mediasoupTypes.Router> => {
 
-    if (rooms.has(roomId)) return rooms.get(roomId);
+    if (rooms.has(roomId)) return rooms.get(roomId)!;
 
-    const worker = getWorker();
-
+    const worker = await getWorker();
     const router = await worker.createRouter({ mediaCodecs });
     rooms.set(roomId, router);
 
     console.log(`Room created: ${roomId}`);
     return router;
 };
-
-export const getRoom = (roomId: string) => rooms.get(roomId);
