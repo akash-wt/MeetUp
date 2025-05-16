@@ -1,10 +1,12 @@
 import { Device } from "mediasoup-client";
+
 export const getMediasoupDevice = async (rtpCapabilities: any) => {
   try {
-    rtpCapabilities = {
-      codecs: rtpCapabilities.rtpCapabilities.codecs,
-      headerExtensions: rtpCapabilities.rtpCapabilities.headerExtensions,
-    };
+    
+    // rtpCapabilities = {
+    //   codecs: rtpCapabilities.rtpCapabilities.codecs,
+    //   headerExtensions: rtpCapabilities.rtpCapabilities.headerExtensions,
+    // };
 
     const device = new Device();
 
