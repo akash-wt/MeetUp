@@ -7,43 +7,68 @@ import { useJoinRoom } from "../hooks/joinRoom";
 import { useCreateSendTransport } from "../hooks/useCreateSendTransport";
 import { useCreateRecvTransport } from "../hooks/useCreateRecvTransport";
 
-export default function Room() {
+type ConsumeResponse = {
+    id: string;
+    kind: mediasoupTypes.MediaKind;
+    rtpParameters: mediasoupTypes.RtpParameters;
+    error?: string;
+};
 
+export default function Room() {
     const location = useLocation();
-    const { name } = location.state || "user";
-    const { roomId } = useParams();
+    const { roomId } = useParams<{ roomId: string }>();
+    const name = (location.state as { name?: string })?.name || "user";
 
     const [producer, setProducer] = useState<mediasoupTypes.Producer | null>(null);
-    const [consumer, setConsumer] = useState<mediasoupTypes.Consumer | null>(null);
     const [producerTransport, setProducerTransport] = useState<mediasoupTypes.Transport | null>(null);
     const [consumerTransport, setConsumerTransport] = useState<mediasoupTypes.Transport | null>(null);
+    const [device, setDevice] = useState<mediasoupTypes.Device | null>(null);
+
+    const [remoteStreams, setRemoteStreams] = useState<{ producerId: string; stream: MediaStream }[]>([]);
 
     const localVideoRef = useRef<HTMLVideoElement | null>(null);
-    const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+
     const { joinRoom } = useJoinRoom();
-
-
     const { createSendTransport } = useCreateSendTransport();
     const { createRecTransport } = useCreateRecvTransport();
 
+    useEffect(() => {
+        const handleNewProducer = ({ producerId }: { producerId: string }) => {
+            console.log("New producer detected:", producerId);
+            consume(producerId);
+        };
 
-    socket.on("connect", () => console.log("Connected to server"));
+        const handleProducerLeft = ({ producerId }: { producerId: string }) => {
+            console.log("Producer left:", producerId);
+            setRemoteStreams((prev) => prev.filter(({ producerId: id }) => id !== producerId));
+        };
 
-    socket.on("disconnect", () => {
-        console.log("Disconnected from server");
-    });
+        socket.on("connect", () => console.log("Connected to server"));
+        socket.on("disconnect", () => console.log("Disconnected from server"));
+        socket.on("newProducer", handleNewProducer);
+        socket.on("producerLeft", handleProducerLeft);
+
+        return () => {
+            socket.off("connect");
+            socket.off("disconnect");
+            socket.off("newProducer", handleNewProducer);
+            socket.off("producerLeft", handleProducerLeft);
+        };
+    }, [consumerTransport, device]);
 
     useEffect(() => {
-        if (!roomId) {
-            toast.info("Room not Found!");
-        }
+        const run = async () => {
+            if (!roomId) {
+                toast.info("Room not Found!");
+                return;
+            }
 
-
-        async function init() {
-
-            const device: mediasoupTypes.Device | null = await joinRoom(roomId || "test-123");
-            console.log(device);
-
+            const joinedDevice = await joinRoom(roomId);
+            if (!joinedDevice) {
+                console.error("Device not found");
+                return;
+            }
+            setDevice(joinedDevice);
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: true,
@@ -53,88 +78,81 @@ export default function Room() {
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
             }
-            if (!device) {
-                console.log("device not found ");
-                return
-            }
 
-            const sendTransport = await createSendTransport(roomId!, "send", device);
-            if (sendTransport) {
-                setProducerTransport(sendTransport);
-            }
+            const sendTransport = await createSendTransport(roomId, "send", joinedDevice);
+            if (sendTransport) setProducerTransport(sendTransport);
 
             const track = stream.getVideoTracks()[0];
+            const produced = await sendTransport?.produce({ track });
+            if (produced) setProducer(produced);
 
-            const producer = await sendTransport?.produce({ track });
-            if (producer) {
-                setProducer(producer);
-            }
-            const recvTransport = await createRecTransport(roomId!, "recv",device);
+            const recvTransport = await createRecTransport(roomId, "recv", joinedDevice);
+            if (recvTransport) setConsumerTransport(recvTransport);
 
             if (recvTransport) {
-                setConsumerTransport(recvTransport);
-            }
-
-            if (!recvTransport?.id && !producer?.id) {
-                console.log("recvT not found ");
-                return;
-            }
-
-
-            socket.emit(
-                "consume",
-                {
-                    roomId: roomId,
-                    transportId: recvTransport?.id,
-                    producerId: producer?.id,
-                    rtpCapabilities: device.rtpCapabilities,
-                },
-
-                async (consumeResponse: any) => {
-                    if (consumeResponse.error) {
-                        console.error("consume error:", consumeResponse.error);
-                        return;
-                    }
-
-                    const { id, kind, rtpParameters, producerId } =
-                        consumeResponse;
-
-
-                    if (!recvTransport) {
-                        console.log("recvT not found");
-
-                        return
-
-                    }
-                    const consumer = await recvTransport.consume({
-                        id,
-                        producerId,
-                        kind,
-                        rtpParameters,
+                socket.emit("getProducers", roomId, ({ producerIds }: { producerIds: string[] }) => {
+                    producerIds.forEach((id) => {
+                        // Avoid consuming own producer
+                        if (produced && id === produced.id) return;
+                        consume(id);
                     });
+                });
+            }
+        };
 
-                    setConsumer(consumer);
-                    consumer.resume()
+        run();
+    }, [roomId]);
 
-                    const remoteStream = new MediaStream();
-                    remoteStream.addTrack(consumer.track);
-
-                    if (remoteVideoRef.current) {
-                        remoteVideoRef.current.srcObject = remoteStream;
-                    }
-
-                }
-            );
-
+    const consume = async (producerId: string) => {
+        if (!consumerTransport || !device) {
+            console.error("Consumer transport or device missing");
+            return;
         }
-        init();
 
-    }, [roomId])
+        if (remoteStreams.find((s) => s.producerId === producerId)) {
+            console.log(`Already consuming producer ${producerId}`);
+            return;
+        }
+
+        socket.emit(
+            "consume",
+            {
+                roomId,
+                transportId: consumerTransport.id,
+                producerId,
+                rtpCapabilities: device.rtpCapabilities,
+            },
+            async (consumeResponse: ConsumeResponse) => {
+                if (consumeResponse.error) {
+                    console.error("Consume error:", consumeResponse.error);
+                    return;
+                }
+
+                const { id, kind, rtpParameters } = consumeResponse;
+
+                const newConsumer = await consumerTransport.consume({
+                    id,
+                    producerId,
+                    kind,
+                    rtpParameters,
+                });
+
+                await newConsumer.resume();
+
+                const remoteStream = new MediaStream();
+                remoteStream.addTrack(newConsumer.track);
+
+                setRemoteStreams((prev) => [...prev, { producerId, stream: remoteStream }]);
+
+                console.log("Consumed stream from producer:", producerId);
+            }
+        );
+    };
 
     return (
         <div>
-            <div>Name {name}</div>
-            <div>Room Id {roomId}</div>
+            <div>Name: {name}</div>
+            <div>Room Id: {roomId}</div>
 
             <div>
                 <h2>Local Video</h2>
@@ -146,14 +164,23 @@ export default function Room() {
                     style={{ width: "300px" }}
                 />
 
-                <h2>Remote Video</h2>
-                <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    style={{ width: "300px" }}
-                />
+                <div>
+                    <h2>Remote Videos</h2>
+                    {remoteStreams.map(({ producerId, stream }) => (
+                        <video
+                            key={producerId}
+                            autoPlay
+                            playsInline
+                            style={{ width: "300px", margin: "0 10px" }}
+                            ref={(videoEl) => {
+                                if (videoEl) {
+                                    videoEl.srcObject = stream;
+                                }
+                            }}
+                        />
+                    ))}
+                </div>
             </div>
         </div>
-    )
+    );
 }
