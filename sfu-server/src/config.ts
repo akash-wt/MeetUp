@@ -25,7 +25,7 @@ export const webRtcTransport_options: mediasoupTypes.WebRtcTransportOptions = {
                     announcedIp: process.env.WEBRTC_ANNOUNCED_IP || '127.0.0.1',
                 },
             ]
-            : [{ ip: '192.168.240.135' }],
+            : [{ ip: '127.0.0.1' }],
 
     enableUdp: true,
     enableTcp: true,
