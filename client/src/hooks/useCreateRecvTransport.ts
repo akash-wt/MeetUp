@@ -1,52 +1,53 @@
-import { useRecoilValue } from 'recoil';
-import { currentDevice } from '../store/deviceState';
 import socket from '../lib/socket';
-import { currentRoomIdState } from '../store/roomState';
-import { useTransport } from './useCreateTransport';
+import { createTransport } from './createTransport';
+import { types as mediasoupTypes } from "mediasoup-client";
 
-
+type TransportResponse = {
+    id: string;
+    iceParameters: mediasoupTypes.IceParameters;
+    iceCandidates: mediasoupTypes.IceCandidate[];
+    dtlsParameters: mediasoupTypes.DtlsParameters;
+};
 
 export const useCreateRecvTransport = () => {
-    const roomId = useRecoilValue(currentRoomIdState);
-    const device = useRecoilValue(currentDevice);
-    const createRecvTransportOnServer = useTransport(roomId!);
 
+    const createRecTransport = async (roomId: string, direction: "send" | "recv", device: mediasoupTypes.Device) => {
 
-    const createRecvTransport = async () => {
-        const transport = await createRecvTransportOnServer();
-        console.log("Recv Transport", transport);
+        const response: TransportResponse = await createTransport(roomId, direction);
 
-        if (
-            !device ||
-            !transport?.id ||
-            !transport.dtlsParameters ||
-            !transport.iceCandidates ||
-            !transport.iceParameters
-        ) {
-            console.log("Device or transport not found!");
-            return;
+        if (!device) {
+            console.log("Device not found");
+            return
+
         }
 
-        const recvTransport = device.createRecvTransport({
-            id: transport.id,
-            iceParameters: transport.iceParameters,
-            iceCandidates: transport.iceCandidates,
-            dtlsParameters: transport.dtlsParameters
-        });
+        const recvTransport = device.createRecvTransport(response);
+        console.log(recvTransport);
 
-        recvTransport.on("connect", ({ dtlsParameters }, callback, errBack) => {
-            try {
-                socket.emit("connectTransport", { roomId, transportId: recvTransport.id, dtlsParameters },
-                 
-
-                    callback);
-            } catch (e) {
-                errBack(e instanceof Error ? e : new Error("An error occurred while connecting recv transport"));
+        recvTransport.on(
+            "connect",
+            ({ dtlsParameters }, callback, errback) => {
+                socket.emit(
+                    "connectTransport",
+                    {
+                        roomId: roomId,
+                        transportId: recvTransport.id,
+                        direction: "recv",
+                        dtlsParameters,
+                    },
+                    (res: { error?: string }) => {
+                        if (res?.error) {
+                            errback(new Error(res.error));
+                            return;
+                        }
+                        callback();
+                    }
+                );
             }
-        });
+        );
 
         return recvTransport;
     };
 
-    return { createRecvTransport };
+    return { createRecTransport };
 };

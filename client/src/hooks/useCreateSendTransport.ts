@@ -1,70 +1,83 @@
-import { useRecoilValue } from 'recoil';
-import { currentDevice } from '../store/deviceState';
 import socket from '../lib/socket';
-import { useState } from 'react';
-import { currentRoomIdState } from '../store/roomState';
-import { useTransport } from './useCreateTransport';
+import { createTransport } from './createTransport';
+import { types as mediasoupTypes } from "mediasoup-client";
+// import { useRecoilValue } from 'recoil';
+// import { currentDevice } from '../store/deviceState';
+import { useRef } from 'react';
 
+type TransportResponse = {
+    id: string;
+    iceParameters: mediasoupTypes.IceParameters;
+    iceCandidates: mediasoupTypes.IceCandidate[];
+    dtlsParameters: mediasoupTypes.DtlsParameters;
+};
 
 export const useCreateSendTransport = () => {
-    const roomId = useRecoilValue(currentRoomIdState);
-    const device = useRecoilValue(currentDevice);
-    const [producerId, setProducerId] = useState<string | null>(null);
-    const createSendTransportOnServer = useTransport(roomId!);
 
-    const createSendTransport = async () => {
-        const transport = await createSendTransportOnServer();
-        if (
-            !device ||
-            !transport?.id ||
-            !transport.dtlsParameters ||
-            !transport.iceCandidates ||
-            !transport.iceParameters
-        ) {
-            console.log("Device or transport not found!");
+
+
+    async function createSendTransport(roomId: string, direction: "send" | "recv", device: mediasoupTypes.Device) {
+
+        const response: TransportResponse = await createTransport(roomId, direction)
+
+        if (!device) {
+            console.log("device not found");
             return;
         }
 
-        const sendTransport = device.createSendTransport({
-            id: transport.id,
-            iceParameters: transport.iceParameters,
-            iceCandidates: transport.iceCandidates,
-            dtlsParameters: JSON.parse(JSON.stringify(transport.dtlsParameters)),
-        });
-        console.log("sendTransport ", sendTransport.id);
+        console.log(response);
 
-        sendTransport.on("connect", ({ dtlsParameters }, callback, errBack) => {
-            try {
+        const sendTransport = device.createSendTransport(response);
 
-                console.log(sendTransport.id);
-
-                socket.emit("connectTransport", { roomId, transportId: sendTransport.id, dtlsParameters }, () => {
-                    console.log("Send transport connected successfully.");
-                    callback();
-                });
-            } catch (e) {
-                errBack(e instanceof Error ? e : new Error("An error occurred while connecting send transport"));
-            }
-        });
-
-
-        sendTransport.on("produce", ({ kind, rtpParameters }, callback, errBack) => {
-            try {
+        sendTransport.on(
+            "connect",
+            ({ dtlsParameters }, callback, errback) => {
                 socket.emit(
-                    "produce",
-                    { roomId, transportId: sendTransport.id, kind, rtpParameters },
-                    ({ id }: { id: string }) => {
-                        callback({ id });
-                        setProducerId(id);
+                    "connectTransport",
+                    {
+                        roomId: roomId,
+                        transportId: sendTransport.id,
+                        direction: "send",
+                        dtlsParameters,
+                    },
+
+                    (res: { error?: string }) => {
+                        if (res?.error) {
+                            errback(new Error(res.error));
+                            return;
+                        }
+                        callback();
                     }
                 );
-            } catch (e) {
-                errBack(e instanceof Error ? e : new Error("An error occurred while producing"));
             }
-        });
+        );
 
-        return sendTransport;
-    };
+        sendTransport.on(
+            "produce",
+            async ({ kind, rtpParameters }, callback, errback) => {
+                socket.emit(
+                    "produce",
+                    {
+                        roomId: roomId,
+                        transportId: sendTransport.id,
+                        kind,
+                        rtpParameters,
+                    },
+                    ({ id, error }: { id: string; error: string }) => {
+                        if (error) {
+                            errback(new Error(error));
+                            return;
+                        }
+                        callback({ id });
+                    }
+                );
+            }
+        );
+        return sendTransport
 
-    return { producerId, createSendTransport };
+    }
+
+    return { createSendTransport };
+
+
 };
