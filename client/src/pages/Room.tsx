@@ -6,6 +6,8 @@ import { types as mediasoupTypes } from "mediasoup-client";
 import { useJoinRoom } from "../hooks/joinRoom";
 import { useCreateSendTransport } from "../hooks/useCreateSendTransport";
 import { useCreateRecvTransport } from "../hooks/useCreateRecvTransport";
+import VideoCall from "../components/VideoCall";
+import { useNavigate } from "react-router-dom";
 
 type ConsumeResponse = {
     id: string;
@@ -18,6 +20,7 @@ export default function Room() {
     const location = useLocation();
     const { roomId } = useParams<{ roomId: string }>();
     const name = (location.state as { name?: string })?.name || "user";
+    const navigate = useNavigate();
 
     const [producer, setProducer] = useState<mediasoupTypes.Producer | null>(null);
     const [producerTransport, setProducerTransport] = useState<mediasoupTypes.Transport | null>(null);
@@ -32,14 +35,12 @@ export default function Room() {
     const { createSendTransport } = useCreateSendTransport();
     const { createRecTransport } = useCreateRecvTransport();
 
-    // To avoid stale closures inside consume callback
     const consumerTransportRef = useRef(consumerTransport);
     const deviceRef = useRef(device);
     consumerTransportRef.current = consumerTransport;
     deviceRef.current = device;
 
-    // Ref for consume function to call inside socket callbacks
-    const consumeRef = useRef<(producerId: string) => void>();
+    const consumeRef = useRef<(producerId: string) => void>(null);
 
     const consume = useCallback(async (producerId: string) => {
         const consumerTransport = consumerTransportRef.current;
@@ -78,7 +79,7 @@ export default function Room() {
                     rtpParameters,
                 });
 
-                await newConsumer.resume();
+                newConsumer.resume();
 
                 const remoteStream = new MediaStream();
                 remoteStream.addTrack(newConsumer.track);
@@ -92,7 +93,6 @@ export default function Room() {
 
     consumeRef.current = consume;
 
-    // Setup socket event listeners once
     useEffect(() => {
         const handleNewProducer = ({ producerId }: { producerId: string }) => {
             console.log("New producer detected:", producerId);
@@ -117,7 +117,6 @@ export default function Room() {
         };
     }, []);
 
-    // Run setup only once per roomId
     const initialized = useRef(false);
 
     useEffect(() => {
@@ -129,6 +128,13 @@ export default function Room() {
         initialized.current = true;
 
         async function setup() {
+
+            if (!roomId) {
+                {
+                    console.log("room not found");
+                    return
+                }
+            }
             const joinedDevice = await joinRoom(roomId);
             if (!joinedDevice) {
                 console.error("Device not found");
@@ -169,32 +175,37 @@ export default function Room() {
         setup();
     }, [roomId, joinRoom, createSendTransport, createRecTransport, producer]);
 
+
+    const handleLeave = () => {
+        socket.disconnect();
+        navigate("/");
+    };
+
+
+    const handleToggleMic = (muted: boolean) => {
+        if (localVideoRef.current && localVideoRef.current.srcObject) {
+            const stream = localVideoRef.current.srcObject as MediaStream;
+            stream.getAudioTracks().forEach((track) => {
+                track.enabled = !muted;
+            });
+        }
+    };
+
+    const handleShareScreen = async (screenTrack: MediaStreamTrack | null, sendTransport: mediasoupTypes.Transport | null) => {
+        if (sendTransport && screenTrack) {
+            await sendTransport.produce({ track: screenTrack });
+        }
+    };
+
     return (
-        <div>
-            <div>Name: {name}</div>
-            <div>Room Id: {roomId}</div>
-
-            <div>
-                <h2>Local Video</h2>
-                <video ref={localVideoRef} autoPlay playsInline muted style={{ width: "300px" }} />
-
-                <div>
-                    <h2>Remote Videos</h2>
-                    {remoteStreams.map(({ producerId, stream }) => (
-                        <video
-                            key={producerId}
-                            autoPlay
-                            playsInline
-                            style={{ width: "300px", margin: "0 10px" }}
-                            ref={(videoEl) => {
-                                if (videoEl) {
-                                    videoEl.srcObject = stream;
-                                }
-                            }}
-                        />
-                    ))}
-                </div>
-            </div>
-        </div>
+        <VideoCall
+            name={name}
+            roomId={roomId || ""}
+            localVideoRef={localVideoRef as React.RefObject<HTMLVideoElement>}
+            remoteStreams={remoteStreams}
+            onLeave={handleLeave}
+            onToggleMic={handleToggleMic}
+            onShareScreen={(screenTrack: MediaStreamTrack | null) => handleShareScreen(screenTrack, producerTransport)}
+        />
     );
 }
