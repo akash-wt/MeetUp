@@ -8,13 +8,8 @@ import { useCreateSendTransport } from "../hooks/useCreateSendTransport";
 import { useCreateRecvTransport } from "../hooks/useCreateRecvTransport";
 import VideoCall from "../components/VideoCall";
 import { useNavigate } from "react-router-dom";
+import type { ConsumeResponse } from "../types";
 
-type ConsumeResponse = {
-    id: string;
-    kind: mediasoupTypes.MediaKind;
-    rtpParameters: mediasoupTypes.RtpParameters;
-    error?: string;
-};
 
 export default function Room() {
     const location = useLocation();

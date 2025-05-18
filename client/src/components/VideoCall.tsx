@@ -1,92 +1,12 @@
-import React, { useState, useRef, useEffect, RefObject } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-    Mic, MicOff,
-    PhoneOff,
-    ScreenShare,
-    Copy,
-    Pin, PinOff,
-    Video, VideoOff,
-    Settings,
-    Users,
-    MessageSquare,
-    Layout,
-    CheckCircle2,
-    X,
-    Volume2,
-    VolumeX
+    Mic, MicOff, PhoneOff, ScreenShare, Copy, Pin, PinOff, Video, VideoOff, Settings, Users, Layout, X,
 } from "lucide-react";
-
-type RemoteStream = {
-    producerId: string;
-    stream: MediaStream;
-    userName?: string;
-    audioEnabled?: boolean;
-    videoEnabled?: boolean;
-};
-
-type VideoCallProps = {
-    name: string;
-    roomId: string;
-    localVideoRef: RefObject<HTMLVideoElement>;
-    remoteStreams: RemoteStream[];
-    onLeave: () => void;
-    onToggleMic: (muted: boolean) => void;
-    onToggleVideo: (disabled: boolean) => void;
-    onShareScreen: (screenTrack: MediaStreamTrack | null) => void;
-};
+import { toast } from "sonner";
+import { styles } from "./style";
+import type { VideoCallProps } from "../types";
 
 type LayoutMode = "gallery" | "speaker" | "presentation";
-
-// CSS for animations
-const styles = `
-@keyframes fadeInOut {
-  0% { opacity: 0; transform: translate(-50%, -20px); }
-  10% { opacity: 1; transform: translate(-50%, 0); }
-  90% { opacity: 1; transform: translate(-50%, 0); }
-  100% { opacity: 0; transform: translate(-50%, -20px); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.animate-fade-in-out {
-  animation: fadeInOut 3s ease-in-out;
-}
-
-.transition-transform {
-  transition-property: transform;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 200ms;
-}
-
-.hover\\:scale-105:hover {
-  transform: scale(1.05);
-}
-
-.transition-opacity {
-  transition-property: opacity;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 300ms;
-}
-
-.transition-all {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 200ms;
-}
-
-.transition-colors {
-  transition-property: background-color, border-color, color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 200ms;
-}
-`;
 
 const VideoCall: React.FC<VideoCallProps> = ({
     name,
@@ -105,12 +25,9 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const [showConfirmLeave, setShowConfirmLeave] = useState(false);
     const [layout, setLayout] = useState<LayoutMode>("speaker");
     const [showParticipants, setShowParticipants] = useState(false);
-    const [showChat, setShowChat] = useState(false);
     const [pinnedId, setPinnedId] = useState<string | "local" | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
-    // For animations
     const [isControlsVisible, setIsControlsVisible] = useState(true);
     const controlsTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -124,7 +41,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
             }
 
             controlsTimer.current = setTimeout(() => {
-                if (!showParticipants && !showChat && !showConfirmLeave) {
+                if (!showParticipants && !showConfirmLeave) {
                     setIsControlsVisible(false);
                 }
             }, 5000);
@@ -138,21 +55,16 @@ const VideoCall: React.FC<VideoCallProps> = ({
             window.removeEventListener('click', showControls);
             if (controlsTimer.current) clearTimeout(controlsTimer.current);
         };
-    }, [showParticipants, showChat, showConfirmLeave]);
+    }, [showParticipants, showConfirmLeave]);
 
     // Automatically enter speaker view when someone shares screen
     useEffect(() => {
         if (isScreenSharing && layout !== "presentation") {
             setLayout("presentation");
-            showNotification("Entered presentation mode", "success");
+            toast.success("Entered presentation mode");
         }
     }, [isScreenSharing]);
 
-    // Show notification
-    const showNotification = (message: string, type: 'success' | 'error') => {
-        setNotification({ message, type });
-        setTimeout(() => setNotification(null), 3000);
-    };
 
     // Handle mic toggle
     const handleToggleMic = () => {
@@ -163,7 +75,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 audioTrack.enabled = !audioTrack.enabled;
                 setIsMuted(!audioTrack.enabled);
                 onToggleMic(!audioTrack.enabled);
-                showNotification(`Microphone ${!audioTrack.enabled ? 'muted' : 'unmuted'}`, 'success');
+                toast.success(`Microphone ${!audioTrack.enabled ? 'muted' : 'unmuted'}`);
             }
         }
     };
@@ -177,7 +89,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 videoTrack.enabled = !videoTrack.enabled;
                 setIsVideoOff(!videoTrack.enabled);
                 onToggleVideo(!videoTrack.enabled);
-                showNotification(`Camera ${!videoTrack.enabled ? 'turned off' : 'turned on'}`, 'success');
+                toast.success(`Camera ${!videoTrack.enabled ? 'turned off' : 'turned on'}`);
             }
         }
     };
@@ -188,7 +100,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
             if (isScreenSharing) {
                 setIsScreenSharing(false);
                 onShareScreen(null);
-                showNotification("Screen sharing stopped", "success");
+                toast.success("Screen sharing stopped");
             } else {
                 const stream = await navigator.mediaDevices.getDisplayMedia({
                     video: true,
@@ -199,34 +111,27 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 screenTrack.addEventListener('ended', () => {
                     setIsScreenSharing(false);
                     onShareScreen(null);
-                    showNotification("Screen sharing ended", "success");
+                    toast.success("Screen sharing ended");
                 });
 
                 setIsScreenSharing(true);
                 onShareScreen(screenTrack);
-                showNotification("Screen sharing started", "success");
+                toast.success("Screen sharing started");
             }
         } catch (err) {
             console.error("Screen share error:", err);
             onShareScreen(null);
-            showNotification("Failed to share screen", "error");
+            toast.error("Failed to share screen");
         }
     };
 
-    // Copy invite link to clipboard
+
     const handleInvite = () => {
         navigator.clipboard.writeText(window.location.href).then(() => {
-            setCopySuccess(true);
-            showNotification("Meeting link copied to clipboard", "success");
-            setTimeout(() => setCopySuccess(false), 2000);
+            toast.info("Invite link copied!")
         });
     };
 
-    // Toggle layout mode
-    const handleToggleLayout = () => {
-        if (layout === "gallery") setLayout("speaker");
-        else if (layout === "speaker") setLayout("gallery");
-    };
 
     // Toggle sidebar
     const handleToggleSidebar = () => {
@@ -250,27 +155,23 @@ const VideoCall: React.FC<VideoCallProps> = ({
         }
     };
 
-    // Initialize local video stream on mount
-    useEffect(() => {
-        if (localVideoRef.current && localVideoRef.current.srcObject === null) {
-            // If there's no srcObject assigned to the local video element yet,
-            // check if media devices are available and request the user's camera/mic
-            if (navigator.mediaDevices) {
-                navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-                    .then((stream) => {
-                        if (localVideoRef.current) {
-                            localVideoRef.current.srcObject = stream;
-                            localVideoRef.current.play().catch(() => { });
-                            showNotification("Camera and microphone connected", "success");
-                        }
-                    })
-                    .catch((err) => {
-                        console.error("Error accessing media devices:", err);
-                        showNotification("Failed to access camera or microphone", "error");
-                    });
-            }
+    const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
+        if (node !== null) {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then((stream) => {
+                    node.srcObject = stream;
+                    localVideoRef.current = node;  // <-- important: set ref here
+                    node.play().catch(() => { });
+                    toast.success("Camera and microphone connected");
+                })
+                .catch((err) => {
+                    console.error("Error accessing media devices:", err);
+                    toast.error("Failed to access camera or microphone");
+                });
         }
-    }, []);
+    }, [localVideoRef]);
+
+
 
     // Get the main video stream to display based on layout and pins
     const getMainStream = () => {
@@ -386,12 +287,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                     >
                         <Users size={18} />
                     </button>
-                    <button
-                        onClick={() => setShowChat(!showChat)}
-                        className={`text-gray-300 hover:text-white p-2 rounded-full transition-colors duration-200 ${showChat ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
-                    >
-                        <MessageSquare size={18} />
-                    </button>
+
                 </div>
             </header>
 
@@ -508,7 +404,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                                                     className="w-full h-full object-cover"
                                                     ref={
                                                         stream.id === "local"
-                                                            ? localVideoRef
+                                                            ? setVideoRef
                                                             : (el) => setVideoSrcObject(el, stream.stream)
                                                     }
                                                 />
@@ -572,51 +468,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                     </div>
                 )}
 
-                {/* Chat sidebar (placeholder) */}
-                {showChat && (
-                    <div className="absolute right-0 top-0 bottom-0 w-72 bg-[#1a1a1a] border-l border-[#333333] shadow-lg z-20 overflow-hidden flex flex-col">
-                        <div className="p-3 border-b border-[#333333] flex justify-between items-center">
-                            <h3 className="font-semibold">Meeting Chat</h3>
-                            <button onClick={() => setShowChat(false)} className="text-gray-400 hover:text-white">
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-3">
-                            <div className="text-gray-400 text-center">
-                                Chat messages will appear here
-                            </div>
-                        </div>
-                        <div className="p-3 border-t border-[#333333]">
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Type a message..."
-                                    className="flex-1 bg-[#2a2a2a] border border-[#3a3a3a] rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                />
-                                <button className="bg-blue-600 hover:bg-blue-700 rounded px-3 py-2 text-sm font-medium">
-                                    Send
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
-                {/* Notification */}
-                {notification && (
-                    <div
-                        className={`absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-md shadow-lg flex items-center gap-2 z-50 animate-fade-in-out ${notification.type === 'success' ? 'bg-green-800' : 'bg-red-800'
-                            }`}
-                        style={{
-                            animation: 'fadeInOut 3s ease-in-out'
-                        }}
-                    >
-                        {notification.type === 'success' ?
-                            <CheckCircle2 size={16} className="text-green-300" /> :
-                            <X size={16} className="text-red-300" />
-                        }
-                        <span>{notification.message}</span>
-                    </div>
-                )}
             </main>
 
             {/* Controls */}
@@ -670,15 +522,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
                         </button>
 
                         <button
-                            onClick={handleToggleLayout}
-                            aria-label="Change layout"
-                            className="flex flex-col items-center justify-center px-3 py-2 rounded-md bg-[#3a3a3a] hover:bg-[#444444] text-white transition-all duration-200 transform hover:scale-105"
-                        >
-                            <Layout className="w-5 h-5 mb-1" />
-                            <span className="text-xs font-medium">Layout</span>
-                        </button>
-
-                        <button
                             onClick={handleInvite}
                             aria-label="Copy invite link"
                             className="flex flex-col items-center justify-center px-3 py-2 rounded-md bg-[#3a3a3a] hover:bg-[#444444] text-white transition-all duration-200 transform hover:scale-105"
@@ -726,10 +569,13 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 </div>
             )}
 
-
         </div>
 
     );
 };
 
 export default VideoCall;
+
+
+
+
