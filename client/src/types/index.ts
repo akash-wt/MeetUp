@@ -16,7 +16,6 @@ export type VideoCallProps = {
     remoteStreams: RemoteStream[];
     onLeave: () => void;
     onToggleMic: (muted: boolean) => void;
-    onToggleVideo: (disabled: boolean) => void;
     onShareScreen: (screenTrack: MediaStreamTrack | null) => void;
 };
 
