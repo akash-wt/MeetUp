@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import {
     Mic, MicOff, PhoneOff, Copy, Video, VideoOff, Users, Layout, X,
-    ScreenShare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { styles } from "./style";
@@ -23,7 +22,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
     remoteStreams,
     onLeave,
     onToggleMic,
-    onShareScreen,
 }) => {
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
@@ -32,8 +30,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [mainViewParticipant, setMainViewParticipant] = useState<ParticipantView | null>(null);
-    const [isScreenSharing, setIsScreenSharing] = useState(false);
-
 
     useEffect(() => {
         const initializeStream = async () => {
@@ -62,7 +58,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
 
         initializeStream();
 
-
         return () => {
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
@@ -88,37 +83,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
             }
         }
     };
-
-    const handleShareScreen = async () => {
-        try {
-            if (isScreenSharing) {
-                setIsScreenSharing(false);
-                onShareScreen(null);
-                toast.success("Screen sharing stopped");
-            } else {
-                const stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: true,
-                });
-                const screenTrack = stream.getVideoTracks()[0];
-
-                // Listen for the user ending screen share
-                screenTrack.addEventListener('ended', () => {
-                    setIsScreenSharing(false);
-                    onShareScreen(null);
-                    toast.success("Screen sharing ended");
-                });
-
-                setIsScreenSharing(true);
-                onShareScreen(screenTrack);
-                toast.success("Screen sharing started");
-            }
-        } catch (err) {
-            console.error("Screen share error:", err);
-            onShareScreen(null);
-            toast.error("Failed to share screen");
-        }
-    };
-
 
     const handleToggleVideo = () => {
         if (localStream) {
@@ -190,6 +154,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
         }
 
         remoteStreams.forEach(remote => {
+
             participants.push({
                 id: remote.producerId,
                 stream: remote.stream,
@@ -198,6 +163,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 isMuted: remote.audioEnabled === false,
                 isVideoOff: remote.videoEnabled === false
             });
+
         });
 
         return participants;
@@ -223,7 +189,9 @@ const VideoCall: React.FC<VideoCallProps> = ({
                     <div className="text-sm bg-gray-800 px-2 py-1 rounded flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                         <span>{remoteStreams.length + 1} participants</span>
+
                     </div>
+                    
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -326,7 +294,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 {showParticipants && (
                     <div className="absolute right-0 top-0 bottom-0 w-72 bg-gray-900 border-l border-[#333333] shadow-lg z-20 overflow-y-auto">
                         <div className="p-3 border-b border-[#333333] flex justify-between items-center">
-                            <h3 className="font-semibold">Participants ({remoteStreams.length + 1})</h3>
+                            <h3 className="font-semibold">Participants ({allParticipants.length})</h3>
                             <button onClick={() => setShowParticipants(false)} className="text-gray-400 hover:text-white">
                                 <X size={18} />
                             </button>
@@ -406,19 +374,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
                                 </span>
                             </button>
                         </div>
-                    </div>
-                    <div>
-                        <button
-                            onClick={handleShareScreen}
-                            aria-label={isScreenSharing ? "Stop sharing" : "Share screen"}
-                            className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105 ${isScreenSharing
-                                ? "bg-blue-700 text-white hover:bg-blue-800"
-                                : "bg-[#3a3a3a] text-white hover:bg-[#444444]"
-                                }`}
-                        >
-                            <ScreenShare className="w-5 h-5 mb-1" />
-                            <span className="text-xs font-medium">{isScreenSharing ? "Stop" : "Share"}</span>
-                        </button>
                     </div>
 
                     <div className="absolute right-4">

@@ -186,21 +186,14 @@ export default function Room() {
         }
     };
 
-    const handleShareScreen = async (screenTrack: MediaStreamTrack | null, sendTransport: mediasoupTypes.Transport | null) => {
-        if (sendTransport && screenTrack) {
-            await sendTransport.produce({ track: screenTrack });
-        }
-    };
-
     return (
         <VideoCall
             name={name}
-            roomId={roomId || ""}
             localVideoRef={localVideoRef as React.RefObject<HTMLVideoElement>}
             remoteStreams={remoteStreams}
             onLeave={handleLeave}
             onToggleMic={handleToggleMic}
-            onShareScreen={(screenTrack: MediaStreamTrack | null) => handleShareScreen(screenTrack, producerTransport)}
+
         />
     );
 }

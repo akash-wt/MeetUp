@@ -11,12 +11,11 @@ export type RemoteStream = {
 
 export type VideoCallProps = {
     name: string;
-    roomId: string;
     localVideoRef: RefObject<HTMLVideoElement>;
     remoteStreams: RemoteStream[];
     onLeave: () => void;
     onToggleMic: (muted: boolean) => void;
-    onShareScreen: (screenTrack: MediaStreamTrack | null) => void;
+   
 };
 
 
