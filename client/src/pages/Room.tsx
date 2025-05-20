@@ -173,6 +173,7 @@ export default function Room() {
 
     const handleLeave = () => {
         socket.disconnect();
+        producer?.close();
         navigate("/");
     };
 

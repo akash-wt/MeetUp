@@ -15,7 +15,7 @@ export type VideoCallProps = {
     remoteStreams: RemoteStream[];
     onLeave: () => void;
     onToggleMic: (muted: boolean) => void;
-   
+
 };
 
 
@@ -25,3 +25,20 @@ export type ConsumeResponse = {
     rtpParameters: mediasoupTypes.RtpParameters;
     error?: string;
 };
+
+export type ParticipantView = {
+    id: string;
+    stream: MediaStream | null;
+    name: string;
+    isLocal: boolean;
+    isMuted: boolean;
+    isVideoOff: boolean;
+};
+
+
+export interface RecordingConfig {
+    mimeType: string;
+    videoBitsPerSecond: number;
+    audioBitsPerSecond: number;
+    chunkDurationMs: number;
+}

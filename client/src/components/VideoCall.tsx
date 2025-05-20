@@ -1,18 +1,17 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
     Mic, MicOff, PhoneOff, Copy, Video, VideoOff, Users, Layout, X,
+    Square, Circle
 } from "lucide-react";
 import { toast } from "sonner";
 import { styles } from "./style";
-import type { VideoCallProps } from "../types";
+import type { VideoCallProps, ParticipantView, RecordingConfig } from "../types";
 
-type ParticipantView = {
-    id: string;
-    stream: MediaStream | null;
-    name: string;
-    isLocal: boolean;
-    isMuted: boolean;
-    isVideoOff: boolean;
+const DEFAULT_RECORDING_CONFIG: RecordingConfig = {
+    mimeType: 'video/webm;codecs=vp9,opus',
+    videoBitsPerSecond: 5000000,  // 10 Mbps
+    audioBitsPerSecond: 128000,   // 128 kbps
+    chunkDurationMs: 10000,       // 10 seconds per chunk
 };
 
 const VideoCall: React.FC<VideoCallProps> = ({
@@ -30,6 +29,18 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [mainViewParticipant, setMainViewParticipant] = useState<ParticipantView | null>(null);
+
+  
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [recordingConfig, setRecordingConfig] = useState<RecordingConfig>(DEFAULT_RECORDING_CONFIG);
+
+    // Recording refs
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordedChunksRef = useRef<Blob[]>([]);
+    const recordingTimerRef = useRef<number | null>(null);
+    const recordingStartTimeRef = useRef<number>(0);
+    const chunkIntervalRef = useRef<number | null>(null);
 
     useEffect(() => {
         const initializeStream = async () => {
@@ -62,8 +73,211 @@ const VideoCall: React.FC<VideoCallProps> = ({
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
             }
+
+            // Clean up recording resources
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+            }
+
+            if (chunkIntervalRef.current) {
+                clearInterval(chunkIntervalRef.current);
+            }
+
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                mediaRecorderRef.current.stop();
+            }
         };
     }, []);
+
+
+    const formatRecordingTime = (timeInSeconds: number): string => {
+        const minutes = Math.floor(timeInSeconds / 60);
+        const seconds = timeInSeconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    const createCompositeStream = (): MediaStream => {
+        const compositeStream = new MediaStream();
+
+
+        if (localStream && !isVideoOff) {
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                compositeStream.addTrack(videoTrack);
+            }
+        }
+
+
+        if (localStream && !isMuted) {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                compositeStream.addTrack(audioTrack);
+            }
+        }
+
+
+        remoteStreams.forEach(remote => {
+            if (remote.stream && remote.audioEnabled !== false) {
+                const audioTracks = remote.stream.getAudioTracks();
+                audioTracks.forEach(track => {
+                    compositeStream.addTrack(track);
+                });
+            }
+        });
+
+        return compositeStream;
+    };
+
+    // Start recording
+    const startRecording = () => {
+        try {
+
+            if (!MediaRecorder.isTypeSupported(recordingConfig.mimeType)) {
+                toast.error("Recording format not supported by your browser. Trying fallback format.");
+                setRecordingConfig(prev => ({ ...prev, mimeType: 'video/webm' }));
+            }
+
+            const compositeStream = createCompositeStream();
+
+            if (compositeStream.getTracks().length === 0) {
+                toast.error("No tracks available to record");
+                return;
+            }
+
+            const mediaRecorder = new MediaRecorder(compositeStream, {
+                mimeType: recordingConfig.mimeType,
+                videoBitsPerSecond: recordingConfig.videoBitsPerSecond,
+                audioBitsPerSecond: recordingConfig.audioBitsPerSecond
+            });
+
+            // Clear previous chunks
+            recordedChunksRef.current = [];
+
+            // Handle data available event
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    recordedChunksRef.current.push(event.data);
+
+                    // Here you could implement a function to upload this chunk to S3
+                    // uploadChunkToS3(event.data);
+                    console.log(`Chunk recorded: ${event.data.size} bytes`);
+                }
+            };
+
+
+            mediaRecorderRef.current = mediaRecorder;
+            mediaRecorder.start();
+
+
+            chunkIntervalRef.current = window.setInterval(() => {
+                if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                    mediaRecorderRef.current.requestData(); // Request a chunk
+                }
+            }, recordingConfig.chunkDurationMs);
+
+            // Set up recording timer
+            recordingStartTimeRef.current = Date.now();
+            recordingTimerRef.current = window.setInterval(() => {
+                const elapsedSeconds = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+                setRecordingTime(elapsedSeconds);
+            }, 1000);
+
+            setIsRecording(true);
+            toast.success("Recording started");
+        } catch (error) {
+            console.error("Error starting recording:", error);
+            toast.error("Failed to start recording");
+        }
+    };
+
+    // Stop recording
+    const stopRecording = async () => {
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+            return;
+        }
+
+        return new Promise<void>((resolve) => {
+            if (mediaRecorderRef.current) {
+                // Handle the stop event to finalize
+                mediaRecorderRef.current.onstop = () => {
+                    // Clear intervals
+                    if (recordingTimerRef.current) {
+                        clearInterval(recordingTimerRef.current);
+                    }
+
+                    if (chunkIntervalRef.current) {
+                        clearInterval(chunkIntervalRef.current);
+                    }
+
+                    setIsRecording(false);
+                    toast.success("Recording stopped");
+
+                    // You could implement a function to finalize the upload to S3
+                    console.log(`Recording complete. Total chunks: ${recordedChunksRef.current.length}`);
+
+                    resolve();
+                };
+
+                // Request final data chunk
+                mediaRecorderRef.current.requestData();
+
+                // Stop the recorder
+                mediaRecorderRef.current.stop();
+            } else {
+                resolve();
+            }
+        });
+    };
+
+    // Toggle recording state
+    const handleToggleRecording = async () => {
+        if (isRecording) {
+            await stopRecording();
+        } else {
+            startRecording();
+        }
+    };
+
+    // Download recording (for testing purposes)
+    const downloadRecording = () => {
+        if (recordedChunksRef.current.length === 0) {
+            toast.error("No recording available to download");
+            return;
+        }
+
+        const blob = new Blob(recordedChunksRef.current, { type: recordingConfig.mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `recording-${roomId}-${Date.now()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+
+        setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 100);
+    };
+
+    // This function would handle uploading a chunk to S3
+    // You would need to implement the actual S3 upload logic
+    const uploadChunkToS3 = (chunk: Blob, index: number) => {
+        // Example implementation (pseudo-code)
+        // const formData = new FormData();
+        // formData.append('file', chunk);
+        // formData.append('roomId', roomId);
+        // formData.append('chunkIndex', index.toString());
+        // formData.append('timestamp', Date.now().toString());
+
+        // fetch('/api/upload-to-s3', {
+        //     method: 'POST',
+        //     body: formData
+        // })
+        // .then(response => response.json())
+        // .then(data => console.log('Chunk uploaded:', data))
+        // .catch(error => console.error('Error uploading chunk:', error));
+    };
 
     const handleToggleMic = () => {
         if (localStream) {
@@ -154,7 +368,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
         }
 
         remoteStreams.forEach(remote => {
-
             participants.push({
                 id: remote.producerId,
                 stream: remote.stream,
@@ -163,7 +376,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 isMuted: remote.audioEnabled === false,
                 isVideoOff: remote.videoEnabled === false
             });
-
         });
 
         return participants;
@@ -189,9 +401,15 @@ const VideoCall: React.FC<VideoCallProps> = ({
                     <div className="text-sm bg-gray-800 px-2 py-1 rounded flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                         <span>{remoteStreams.length + 1} participants</span>
-
                     </div>
-                    
+
+                   
+                    {isRecording && (
+                        <div className="text-sm bg-red-800/70 px-2 py-1 rounded flex items-center gap-1">
+                            <Circle size={8} className="text-red-500 animate-pulse" fill="currentColor" />
+                            <span>Recording {formatRecordingTime(recordingTime)}</span>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -374,6 +592,46 @@ const VideoCall: React.FC<VideoCallProps> = ({
                                 </span>
                             </button>
                         </div>
+
+                        {/* Recording button */}
+                        <div>
+                            <button
+                                onClick={handleToggleRecording}
+                                aria-label={isRecording ? "Stop recording" : "Start recording"}
+                                className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105 ${isRecording
+                                    ? "bg-red-800 hover:bg-red-700 text-white"
+                                    : "bg-gray-800 hover:bg-gray-700 text-red-400"
+                                    }`}
+                            >
+                                {isRecording ?
+                                    <Square className="w-5 h-5 mb-1" /> :
+                                    <Circle className="w-5 h-5 mb-1" fill="currentColor" />
+                                }
+                                <span className="text-xs font-medium">
+                                    {isRecording ? "Stop" : "Record"}
+                                </span>
+                            </button>
+                        </div>
+
+                        {/* Download recording button (for testing) */}
+                        {recordedChunksRef.current.length > 0 && !isRecording && (
+                            <div>
+                                <button
+                                    onClick={downloadRecording}
+                                    aria-label="Download recording"
+                                    className="flex flex-col items-center justify-center px-3 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-white transition-all duration-200 transform hover:scale-105"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                    <span className="text-xs font-medium">
+                                        Download
+                                    </span>
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="absolute right-4">
@@ -387,7 +645,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
                         </button>
                     </div>
                 </div>
-
             </footer>
 
             {showConfirmLeave && (
