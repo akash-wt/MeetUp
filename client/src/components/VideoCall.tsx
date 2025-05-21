@@ -6,6 +6,7 @@ import {
 import { toast } from "sonner";
 import { styles } from "./style";
 import type { VideoCallProps, ParticipantView, RecordingConfig } from "../types";
+import { uploadRecording } from "../lib/uploadRecording";
 
 const DEFAULT_RECORDING_CONFIG: RecordingConfig = {
     mimeType: 'video/webm;codecs=vp9,opus',
@@ -30,7 +31,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [mainViewParticipant, setMainViewParticipant] = useState<ParticipantView | null>(null);
 
-  
+
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordingConfig, setRecordingConfig] = useState<RecordingConfig>(DEFAULT_RECORDING_CONFIG);
@@ -129,7 +130,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
     };
 
     // Start recording
-    const startRecording = () => {
+    const startRecording = async () => {
         try {
 
             if (!MediaRecorder.isTypeSupported(recordingConfig.mimeType)) {
@@ -154,12 +155,12 @@ const VideoCall: React.FC<VideoCallProps> = ({
             recordedChunksRef.current = [];
 
             // Handle data available event
-            mediaRecorder.ondataavailable = (event) => {
+            mediaRecorder.ondataavailable = async (event) => {
                 if (event.data && event.data.size > 0) {
                     recordedChunksRef.current.push(event.data);
 
-                    // Here you could implement a function to upload this chunk to S3
-                    // uploadChunkToS3(event.data);
+
+                    await uploadRecording(event.data, roomId);
                     console.log(`Chunk recorded: ${event.data.size} bytes`);
                 }
             };
@@ -260,24 +261,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
         }, 100);
     };
 
-    // This function would handle uploading a chunk to S3
-    // You would need to implement the actual S3 upload logic
-    const uploadChunkToS3 = (chunk: Blob, index: number) => {
-        // Example implementation (pseudo-code)
-        // const formData = new FormData();
-        // formData.append('file', chunk);
-        // formData.append('roomId', roomId);
-        // formData.append('chunkIndex', index.toString());
-        // formData.append('timestamp', Date.now().toString());
-
-        // fetch('/api/upload-to-s3', {
-        //     method: 'POST',
-        //     body: formData
-        // })
-        // .then(response => response.json())
-        // .then(data => console.log('Chunk uploaded:', data))
-        // .catch(error => console.error('Error uploading chunk:', error));
-    };
 
     const handleToggleMic = () => {
         if (localStream) {
@@ -403,7 +386,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                         <span>{remoteStreams.length + 1} participants</span>
                     </div>
 
-                   
+
                     {isRecording && (
                         <div className="text-sm bg-red-800/70 px-2 py-1 rounded flex items-center gap-1">
                             <Circle size={8} className="text-red-500 animate-pulse" fill="currentColor" />

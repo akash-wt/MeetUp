@@ -190,6 +190,7 @@ export default function Room() {
     return (
         <VideoCall
             name={name}
+            roomId={roomId || ""}
             localVideoRef={localVideoRef as React.RefObject<HTMLVideoElement>}
             remoteStreams={remoteStreams}
             onLeave={handleLeave}
