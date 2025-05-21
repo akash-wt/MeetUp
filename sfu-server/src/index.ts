@@ -6,18 +6,18 @@ import { types as mediasoupTypes } from "mediasoup";
 dotenv.config();
 import { GetRoom } from "./signaling/rooms";
 import { createWebRtcTransport } from "./signaling/transports";
+import presignRouter from './routes/presign';
+import type { Peer } from "./types";
+import cors from "cors";
 
 const app = express();
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 const PORT = 5080;
 
-type Peer = {
-  producerTransport: mediasoupTypes.WebRtcTransport[];
-  consumerTransport: mediasoupTypes.WebRtcTransport[];
-  producers: { producer: mediasoupTypes.Producer; transportId: string }[];
-  consumers: { consumer: mediasoupTypes.Consumer; transportId: string }[];
-};
+app.use(cors());
+app.use('/api/presign', presignRouter);
 
 const roomPeers = new Map<string, Map<string, Peer>>();
 const roomBroadcastedProducers = new Map<string, Set<string>>();
