@@ -1,4 +1,4 @@
-import { useParams, useLocation } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useEffect, useRef, useState, useCallback } from "react";
 import socket from "../lib/socket";
@@ -12,9 +12,13 @@ import type { ConsumeResponse } from "../types";
 
 
 export default function Room() {
-    const location = useLocation();
+
     const { roomId } = useParams<{ roomId: string }>();
-    const name = (location.state as { name?: string })?.name || "user";
+
+    const user = localStorage.getItem("user")
+    const userData = user ? JSON.parse(user) : null;
+
+
     const navigate = useNavigate();
 
     const [producer, setProducer] = useState<mediasoupTypes.Producer | null>(null);
@@ -189,7 +193,7 @@ export default function Room() {
 
     return (
         <VideoCall
-            name={name}
+            name={userData.name}
             roomId={roomId || ""}
             localVideoRef={localVideoRef as React.RefObject<HTMLVideoElement>}
             remoteStreams={remoteStreams}

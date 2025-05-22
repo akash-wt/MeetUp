@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
     Mic, MicOff, PhoneOff, Copy, Video, VideoOff, Users, Layout, X,
-    Square, Circle
+    Square, Circle, Upload
 } from "lucide-react";
 import { toast } from "sonner";
 import { styles } from "./style";
@@ -10,10 +10,16 @@ import { uploadRecording } from "../lib/uploadRecording";
 
 const DEFAULT_RECORDING_CONFIG: RecordingConfig = {
     mimeType: 'video/webm;codecs=vp9,opus',
-    videoBitsPerSecond: 5000000,  // 10 Mbps
+    videoBitsPerSecond: 5000000,  // 5 Mbps
     audioBitsPerSecond: 128000,   // 128 kbps
-    chunkDurationMs: 10000,       // 10 seconds per chunk
+    chunkDurationMs: 30000,       // 30 seconds per chunk
 };
+
+interface ChunkUploadStatus {
+    chunkIndex: number;
+    progress: number;
+    status: 'uploading' | 'completed' | 'failed';
+}
 
 const VideoCall: React.FC<VideoCallProps> = ({
     name,
@@ -31,10 +37,13 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [mainViewParticipant, setMainViewParticipant] = useState<ParticipantView | null>(null);
 
-
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordingConfig, setRecordingConfig] = useState<RecordingConfig>(DEFAULT_RECORDING_CONFIG);
+
+    // Improved upload status tracking
+    const [chunkUploads, setChunkUploads] = useState<Map<number, ChunkUploadStatus>>(new Map());
+    const [totalUploadedChunks, setTotalUploadedChunks] = useState(0);
 
     // Recording refs
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -42,6 +51,10 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const recordingTimerRef = useRef<number | null>(null);
     const recordingStartTimeRef = useRef<number>(0);
     const chunkIntervalRef = useRef<number | null>(null);
+
+    const user = localStorage.getItem("user")
+    const userData = user ? JSON.parse(user) : null;
+    const chunkIndexRef = useRef(0)
 
     useEffect(() => {
         const initializeStream = async () => {
@@ -90,6 +103,43 @@ const VideoCall: React.FC<VideoCallProps> = ({
         };
     }, []);
 
+    // Improved upload progress handler
+    const handleUploadProgress = (chunkIndex: number, progress: number) => {
+        setChunkUploads(prev => {
+            const newMap = new Map(prev);
+            newMap.set(chunkIndex, {
+                chunkIndex,
+                progress,
+                status: progress === 100 ? 'completed' : 'uploading'
+            });
+            return newMap;
+        });
+
+        if (progress === 100) {
+            setTotalUploadedChunks(prev => prev + 1);
+
+            // Clean up completed chunk status after a delay
+            setTimeout(() => {
+                setChunkUploads(prev => {
+                    const newMap = new Map(prev);
+                    newMap.delete(chunkIndex);
+                    return newMap;
+                });
+            }, 2000);
+        }
+    };
+
+    const handleUploadError = (chunkIndex: number) => {
+        setChunkUploads(prev => {
+            const newMap = new Map(prev);
+            newMap.set(chunkIndex, {
+                chunkIndex,
+                progress: 0,
+                status: 'failed'
+            });
+            return newMap;
+        });
+    };
 
     const formatRecordingTime = (timeInSeconds: number): string => {
         const minutes = Math.floor(timeInSeconds / 60);
@@ -100,7 +150,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const createCompositeStream = (): MediaStream => {
         const compositeStream = new MediaStream();
 
-
         if (localStream && !isVideoOff) {
             const videoTrack = localStream.getVideoTracks()[0];
             if (videoTrack) {
@@ -108,14 +157,12 @@ const VideoCall: React.FC<VideoCallProps> = ({
             }
         }
 
-
         if (localStream && !isMuted) {
             const audioTrack = localStream.getAudioTracks()[0];
             if (audioTrack) {
                 compositeStream.addTrack(audioTrack);
             }
         }
-
 
         remoteStreams.forEach(remote => {
             if (remote.stream && remote.audioEnabled !== false) {
@@ -132,7 +179,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
     // Start recording
     const startRecording = async () => {
         try {
-
             if (!MediaRecorder.isTypeSupported(recordingConfig.mimeType)) {
                 toast.error("Recording format not supported by your browser. Trying fallback format.");
                 setRecordingConfig(prev => ({ ...prev, mimeType: 'video/webm' }));
@@ -151,30 +197,41 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 audioBitsPerSecond: recordingConfig.audioBitsPerSecond
             });
 
-            // Clear previous chunks
+            
             recordedChunksRef.current = [];
+            setTotalUploadedChunks(0);
+            setChunkUploads(new Map());
+            chunkIndexRef.current = 0;
 
-            // Handle data available event
             mediaRecorder.ondataavailable = async (event) => {
                 if (event.data && event.data.size > 0) {
                     recordedChunksRef.current.push(event.data);
+                    const currentChunkIndex = chunkIndexRef.current;
 
+                    try {
+                        if (event.data && event.data.size > 1000) {
+                            await uploadRecording(
+                                event.data,
+                                roomId,
+                                currentChunkIndex,
+                                (progress) => handleUploadProgress(currentChunkIndex, progress)
+                            );
+                            console.log(`Chunk ${currentChunkIndex} uploaded successfully: ${event.data.size} bytes`);
+                            chunkIndexRef.current += 1;
 
-                    await uploadRecording(event.data, roomId);
-                    console.log(`Chunk recorded: ${event.data.size} bytes`);
+                        }
+                    } catch (error) {
+                        console.error(`Failed to upload chunk ${currentChunkIndex}:`, error);
+                        handleUploadError(currentChunkIndex);
+                        toast.error(`Failed to upload recording chunk ${currentChunkIndex}`);
+                    }
                 }
             };
 
-
             mediaRecorderRef.current = mediaRecorder;
-            mediaRecorder.start();
 
-
-            chunkIntervalRef.current = window.setInterval(() => {
-                if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-                    mediaRecorderRef.current.requestData(); // Request a chunk
-                }
-            }, recordingConfig.chunkDurationMs);
+            // Start recording with automatic chunk generation
+            mediaRecorder.start(recordingConfig.chunkDurationMs);
 
             // Set up recording timer
             recordingStartTimeRef.current = Date.now();
@@ -184,7 +241,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
             }, 1000);
 
             setIsRecording(true);
-            toast.success("Recording started");
+            toast.success("Recording started - chunks will upload automatically");
         } catch (error) {
             console.error("Error starting recording:", error);
             toast.error("Failed to start recording");
@@ -200,7 +257,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
         return new Promise<void>((resolve) => {
             if (mediaRecorderRef.current) {
                 // Handle the stop event to finalize
-                mediaRecorderRef.current.onstop = () => {
+                mediaRecorderRef.current.onstop = async () => {
                     // Clear intervals
                     if (recordingTimerRef.current) {
                         clearInterval(recordingTimerRef.current);
@@ -210,19 +267,18 @@ const VideoCall: React.FC<VideoCallProps> = ({
                         clearInterval(chunkIntervalRef.current);
                     }
 
-                    setIsRecording(false);
-                    toast.success("Recording stopped");
+                    // Clear recorded chunks after stopping (no download option)
+                    recordedChunksRef.current = [];
 
-                    // You could implement a function to finalize the upload to S3
-                    console.log(`Recording complete. Total chunks: ${recordedChunksRef.current.length}`);
+                    setIsRecording(false);
+                    toast.success("Recording stopped and uploaded");
+
+                    console.log(`Recording complete. Total chunks uploaded: ${chunkIndexRef.current}`);
 
                     resolve();
                 };
 
-                // Request final data chunk
-                mediaRecorderRef.current.requestData();
-
-                // Stop the recorder
+                // Stop the recorder (final chunk will be automatically uploaded via ondataavailable)
                 mediaRecorderRef.current.stop();
             } else {
                 resolve();
@@ -238,29 +294,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
             startRecording();
         }
     };
-
-    // Download recording (for testing purposes)
-    const downloadRecording = () => {
-        if (recordedChunksRef.current.length === 0) {
-            toast.error("No recording available to download");
-            return;
-        }
-
-        const blob = new Blob(recordedChunksRef.current, { type: recordingConfig.mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = `recording-${roomId}-${Date.now()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-
-        setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }, 100);
-    };
-
 
     const handleToggleMic = () => {
         if (localStream) {
@@ -372,6 +405,13 @@ const VideoCall: React.FC<VideoCallProps> = ({
         );
     };
 
+    // Calculate upload statistics
+    const activeUploads = Array.from(chunkUploads.values()).filter(chunk => chunk.status === 'uploading');
+    const hasActiveUploads = activeUploads.length > 0;
+    const averageUploadProgress = hasActiveUploads
+        ? Math.round(activeUploads.reduce((sum, chunk) => sum + chunk.progress, 0) / activeUploads.length)
+        : 0;
+
     const thumbnailStreams = getThumbnailStreams();
     const allParticipants = getAllParticipants();
 
@@ -386,11 +426,41 @@ const VideoCall: React.FC<VideoCallProps> = ({
                         <span>{remoteStreams.length + 1} participants</span>
                     </div>
 
-
                     {isRecording && (
                         <div className="text-sm bg-red-800/70 px-2 py-1 rounded flex items-center gap-1">
                             <Circle size={8} className="text-red-500 animate-pulse" fill="currentColor" />
                             <span>Recording {formatRecordingTime(recordingTime)}</span>
+                        </div>
+                    )}
+
+                    {/* Upload Progress Indicator - Only show when actively uploading */}
+                    {hasActiveUploads && (
+                        <div className="text-sm bg-blue-800/70 px-2 py-1 rounded flex items-center gap-2">
+                            <Upload size={12} className="text-blue-400 animate-bounce" />
+                            <div className="flex items-center gap-2">
+                                <div className="w-20 h-1.5 bg-gray-600 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-blue-400 transition-all duration-300 ease-out"
+                                        style={{ width: `${averageUploadProgress}%` }}
+                                    />
+                                </div>
+                                <span className="text-xs">
+                                    {activeUploads.length > 1
+                                        ? `${activeUploads.length} uploading`
+                                        : `${averageUploadProgress}%`
+                                    }
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Upload Status - Show total uploaded chunks */}
+                    {totalUploadedChunks > 0 && (
+                        <div className="text-sm bg-green-800/70 px-2 py-1 rounded flex items-center gap-1">
+                            <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span>{totalUploadedChunks} chunks uploaded</span>
                         </div>
                     )}
                 </div>
@@ -513,6 +583,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
                                             } flex items-center justify-center font-medium`}>
                                             {participant.name.charAt(0).toUpperCase()}
                                         </div>
+
                                         <span>{participant.name}</span>
                                         {participant.id === mainViewParticipant?.id && (
                                             <span className="text-xs bg-gray-600 px-1.5 py-0.5 rounded">Main View</span>
@@ -595,26 +666,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
                                 </span>
                             </button>
                         </div>
-
-                        {/* Download recording button (for testing) */}
-                        {recordedChunksRef.current.length > 0 && !isRecording && (
-                            <div>
-                                <button
-                                    onClick={downloadRecording}
-                                    aria-label="Download recording"
-                                    className="flex flex-col items-center justify-center px-3 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-white transition-all duration-200 transform hover:scale-105"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                        <polyline points="7 10 12 15 17 10"></polyline>
-                                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                                    </svg>
-                                    <span className="text-xs font-medium">
-                                        Download
-                                    </span>
-                                </button>
-                            </div>
-                        )}
                     </div>
 
                     <div className="absolute right-4">

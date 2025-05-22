@@ -1,28 +1,48 @@
-const uploadRecording = async (recordedBlob: Blob, roomId: string) => {
-    console.log(roomId);
-    
+import axios from 'axios'
 
-    const fileName = `${roomId}_user.mp4`;
-    const contentType = 'video/mp4';
+const uploadRecording = async (
+    recordedBlob: Blob,
+    roomId: string,
+    chunkIndex: number,
+    onProgress: (progress: number) => void
+) => {
+    const user = localStorage.getItem("user")
+    const userData = user ? JSON.parse(user) : null
 
-
-    const res = await fetch(`http://localhost:5080/api/presign?fileName=${fileName}&contentType=${contentType}`);
-    const { url } = await res.json();
-
-    const uploadRes = await fetch(url, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': contentType
-        },
-        body: recordedBlob
-    });
-
-    if (uploadRes.ok) {
-        console.log('Recording uploaded successfully!');
-    } else {
-        console.error('Upload failed');
+    if (!userData?.email) {
+        console.error("User email not found")
+        return
     }
-};
 
+    const fileName = `recordings/${userData.email}/${roomId}/chunk-${chunkIndex}.mp4`
+    const contentType = 'video/mp4'
 
-export { uploadRecording };
+    try {
+        const presignRes = await axios.get('http://localhost:5080/api/presign', {
+            params: { fileName, contentType }
+        })
+
+        const url = presignRes.data.url
+
+        const uploadRes = await axios.put(url, recordedBlob, {
+            headers: { 'Content-Type': contentType },
+            onUploadProgress: (progressEvent) => {
+                if (progressEvent.total) {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+                    onProgress(percentCompleted)
+                }
+            }
+        })
+
+        if (uploadRes.status >= 200 && uploadRes.status < 300) {
+            console.log("Recording uploaded successfully!")
+        } else {
+            console.error("Upload failed")
+        }
+
+    } catch (error) {
+        console.error("Upload error:", error)
+    }
+}
+
+export { uploadRecording }
