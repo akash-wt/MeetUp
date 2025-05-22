@@ -9,6 +9,9 @@ import { createWebRtcTransport } from "./signaling/transports";
 import presignRouter from './routes/presign';
 import type { Peer } from "./types";
 import cors from "cors";
+import cookieParser from 'cookie-parser';
+import authRoutes from "./routes/authGoogle"
+
 
 const app = express();
 
@@ -16,8 +19,17 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 const PORT = 5080;
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
+
+app.use(express.json());
+app.use(cookieParser());
+
 app.use('/api/presign', presignRouter);
+app.use("/api", authRoutes);
+
 
 const roomPeers = new Map<string, Map<string, Peer>>();
 const roomBroadcastedProducers = new Map<string, Set<string>>();
@@ -418,3 +430,5 @@ io.on("connection", (socket) => {
 httpServer.listen(PORT, () => {
   console.log(`SFU signaling server running on port ${PORT}`);
 });
+
+

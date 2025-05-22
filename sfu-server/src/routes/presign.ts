@@ -14,13 +14,10 @@ router.get('/', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'fileName and contentType are required' });
     }
 
-    const date = new Date();
-    const easyDate = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-
 
     const command = new PutObjectCommand({
         Bucket: 'meetup.wt',
-        Key: `recordings/${easyDate}-${fileName}`,
+        Key: `${fileName}`,
         ContentType: contentType as string
     });
 
