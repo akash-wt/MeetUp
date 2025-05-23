@@ -12,14 +12,8 @@ const DEFAULT_RECORDING_CONFIG: RecordingConfig = {
     mimeType: 'video/webm;codecs=vp9,opus',
     videoBitsPerSecond: 5000000,  // 5 Mbps
     audioBitsPerSecond: 128000,   // 128 kbps
-    chunkDurationMs: 30000,       // 30 seconds per chunk
+    chunkDurationMs: 0,
 };
-
-interface ChunkUploadStatus {
-    chunkIndex: number;
-    progress: number;
-    status: 'uploading' | 'completed' | 'failed';
-}
 
 const VideoCall: React.FC<VideoCallProps> = ({
     name,
@@ -41,20 +35,16 @@ const VideoCall: React.FC<VideoCallProps> = ({
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordingConfig, setRecordingConfig] = useState<RecordingConfig>(DEFAULT_RECORDING_CONFIG);
 
-    // Improved upload status tracking
-    const [chunkUploads, setChunkUploads] = useState<Map<number, ChunkUploadStatus>>(new Map());
-    const [totalUploadedChunks, setTotalUploadedChunks] = useState(0);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadComplete, setUploadComplete] = useState(false);
 
     // Recording refs
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
     const recordingTimerRef = useRef<number | null>(null);
     const recordingStartTimeRef = useRef<number>(0);
-    const chunkIntervalRef = useRef<number | null>(null);
 
-    const user = localStorage.getItem("user")
-    const userData = user ? JSON.parse(user) : null;
-    const chunkIndexRef = useRef(0)
 
     useEffect(() => {
         const initializeStream = async () => {
@@ -93,53 +83,11 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 clearInterval(recordingTimerRef.current);
             }
 
-            if (chunkIntervalRef.current) {
-                clearInterval(chunkIntervalRef.current);
-            }
-
             if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
                 mediaRecorderRef.current.stop();
             }
         };
     }, []);
-
-    // Improved upload progress handler
-    const handleUploadProgress = (chunkIndex: number, progress: number) => {
-        setChunkUploads(prev => {
-            const newMap = new Map(prev);
-            newMap.set(chunkIndex, {
-                chunkIndex,
-                progress,
-                status: progress === 100 ? 'completed' : 'uploading'
-            });
-            return newMap;
-        });
-
-        if (progress === 100) {
-            setTotalUploadedChunks(prev => prev + 1);
-
-            // Clean up completed chunk status after a delay
-            setTimeout(() => {
-                setChunkUploads(prev => {
-                    const newMap = new Map(prev);
-                    newMap.delete(chunkIndex);
-                    return newMap;
-                });
-            }, 2000);
-        }
-    };
-
-    const handleUploadError = (chunkIndex: number) => {
-        setChunkUploads(prev => {
-            const newMap = new Map(prev);
-            newMap.set(chunkIndex, {
-                chunkIndex,
-                progress: 0,
-                status: 'failed'
-            });
-            return newMap;
-        });
-    };
 
     const formatRecordingTime = (timeInSeconds: number): string => {
         const minutes = Math.floor(timeInSeconds / 60);
@@ -197,43 +145,21 @@ const VideoCall: React.FC<VideoCallProps> = ({
                 audioBitsPerSecond: recordingConfig.audioBitsPerSecond
             });
 
-            
             recordedChunksRef.current = [];
-            setTotalUploadedChunks(0);
-            setChunkUploads(new Map());
-            chunkIndexRef.current = 0;
+            setUploadProgress(0);
+            setIsUploading(false);
+            setUploadComplete(false);
 
-            mediaRecorder.ondataavailable = async (event) => {
+            mediaRecorder.ondataavailable = (event) => {
                 if (event.data && event.data.size > 0) {
                     recordedChunksRef.current.push(event.data);
-                    const currentChunkIndex = chunkIndexRef.current;
-
-                    try {
-                        if (event.data && event.data.size > 1000) {
-                            await uploadRecording(
-                                event.data,
-                                roomId,
-                                currentChunkIndex,
-                                (progress) => handleUploadProgress(currentChunkIndex, progress)
-                            );
-                            console.log(`Chunk ${currentChunkIndex} uploaded successfully: ${event.data.size} bytes`);
-                            chunkIndexRef.current += 1;
-
-                        }
-                    } catch (error) {
-                        console.error(`Failed to upload chunk ${currentChunkIndex}:`, error);
-                        handleUploadError(currentChunkIndex);
-                        toast.error(`Failed to upload recording chunk ${currentChunkIndex}`);
-                    }
                 }
             };
 
             mediaRecorderRef.current = mediaRecorder;
 
-            // Start recording with automatic chunk generation
-            mediaRecorder.start(recordingConfig.chunkDurationMs);
+            mediaRecorder.start();
 
-            // Set up recording timer
             recordingStartTimeRef.current = Date.now();
             recordingTimerRef.current = window.setInterval(() => {
                 const elapsedSeconds = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
@@ -241,14 +167,14 @@ const VideoCall: React.FC<VideoCallProps> = ({
             }, 1000);
 
             setIsRecording(true);
-            toast.success("Recording started - chunks will upload automatically");
+            toast.success("Recording started");
         } catch (error) {
             console.error("Error starting recording:", error);
             toast.error("Failed to start recording");
         }
     };
 
-    // Stop recording
+    // Stop recording and upload
     const stopRecording = async () => {
         if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
             return;
@@ -256,29 +182,59 @@ const VideoCall: React.FC<VideoCallProps> = ({
 
         return new Promise<void>((resolve) => {
             if (mediaRecorderRef.current) {
-                // Handle the stop event to finalize
                 mediaRecorderRef.current.onstop = async () => {
-                    // Clear intervals
+                    // Clear timer
                     if (recordingTimerRef.current) {
                         clearInterval(recordingTimerRef.current);
                     }
 
-                    if (chunkIntervalRef.current) {
-                        clearInterval(chunkIntervalRef.current);
+                    // Create final blob from all chunks
+                    if (recordedChunksRef.current.length > 0) {
+                        const finalBlob = new Blob(recordedChunksRef.current, {
+                            type: recordingConfig.mimeType
+                        });
+
+                        console.log(`Final recording size: ${finalBlob.size} bytes`);
+
+
+                        try {
+                            setIsUploading(true);
+                            toast.success("Recording stopped - uploading...");
+
+                            await uploadRecording(
+                                finalBlob,
+                                roomId,
+                                0,
+                                (progress) => {
+                                    setUploadProgress(progress);
+                                }
+                            );
+
+                            setUploadComplete(true);
+                            toast.success("Recording uploaded successfully!");
+                            console.log("Recording uploaded successfully");
+
+
+                            setTimeout(() => {
+                                setUploadProgress(0);
+                                setIsUploading(false);
+                                setUploadComplete(false);
+                            }, 3000);
+
+                        } catch (error) {
+                            console.error("Failed to upload recording:", error);
+                            toast.error("Failed to upload recording");
+                            setIsUploading(false);
+                        }
                     }
 
-                    // Clear recorded chunks after stopping (no download option)
+
                     recordedChunksRef.current = [];
-
                     setIsRecording(false);
-                    toast.success("Recording stopped and uploaded");
-
-                    console.log(`Recording complete. Total chunks uploaded: ${chunkIndexRef.current}`);
-
                     resolve();
                 };
 
-                // Stop the recorder (final chunk will be automatically uploaded via ondataavailable)
+                // Stop the recorder
                 mediaRecorderRef.current.stop();
             } else {
                 resolve();
@@ -405,13 +361,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
         );
     };
 
-    // Calculate upload statistics
-    const activeUploads = Array.from(chunkUploads.values()).filter(chunk => chunk.status === 'uploading');
-    const hasActiveUploads = activeUploads.length > 0;
-    const averageUploadProgress = hasActiveUploads
-        ? Math.round(activeUploads.reduce((sum, chunk) => sum + chunk.progress, 0) / activeUploads.length)
-        : 0;
-
     const thumbnailStreams = getThumbnailStreams();
     const allParticipants = getAllParticipants();
 
@@ -433,34 +382,29 @@ const VideoCall: React.FC<VideoCallProps> = ({
                         </div>
                     )}
 
-                    {/* Upload Progress Indicator - Only show when actively uploading */}
-                    {hasActiveUploads && (
+                    {/* Upload Progress Indicator */}
+                    {isUploading && (
                         <div className="text-sm bg-blue-800/70 px-2 py-1 rounded flex items-center gap-2">
                             <Upload size={12} className="text-blue-400 animate-bounce" />
                             <div className="flex items-center gap-2">
                                 <div className="w-20 h-1.5 bg-gray-600 rounded-full overflow-hidden">
                                     <div
                                         className="h-full bg-blue-400 transition-all duration-300 ease-out"
-                                        style={{ width: `${averageUploadProgress}%` }}
+                                        style={{ width: `${uploadProgress}%` }}
                                     />
                                 </div>
-                                <span className="text-xs">
-                                    {activeUploads.length > 1
-                                        ? `${activeUploads.length} uploading`
-                                        : `${averageUploadProgress}%`
-                                    }
-                                </span>
+                                <span className="text-xs">{uploadProgress}%</span>
                             </div>
                         </div>
                     )}
 
-                    {/* Upload Status - Show total uploaded chunks */}
-                    {totalUploadedChunks > 0 && (
+                    {/* Upload Complete Status */}
+                    {uploadComplete && (
                         <div className="text-sm bg-green-800/70 px-2 py-1 rounded flex items-center gap-1">
                             <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
-                            <span>{totalUploadedChunks} chunks uploaded</span>
+                            <span>Upload complete</span>
                         </div>
                     )}
                 </div>
@@ -606,30 +550,34 @@ const VideoCall: React.FC<VideoCallProps> = ({
             <footer className={"py-2 px-4 bg-gray-900 border-t border-[#333333] shadow-lg transition-opacity duration-300 "}>
                 <div className="flex items-center justify-center gap-4 w-full">
                     <div className="flex items-center justify-center gap-2">
+
                         <div>
                             <button
                                 onClick={handleToggleMic}
                                 aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
-                                className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105 ${isMuted
-                                    ? "bg-gray-800 text-red-400 hover:bg-gray-700"
-                                    : "bg-gray-800 text-green-400 hover:bg-gray-700"
+                                className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105 bg-gray-800 hover:bg-gray-700
+                        ${isMuted
+                                        ? "text-gray-300 hover:text-red-400"
+                                        : "text-gray-300 hover:text-green-400"
                                     }`}
                             >
-                                {isMuted ? <MicOff className="w-5 h-5 mb-1" /> : <Mic className="w-5 h-5 mb-1" />}
+                                {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                                 <span className="text-xs font-medium">{isMuted ? "Unmute" : "Mute"}</span>
                             </button>
                         </div>
+
 
                         <div>
                             <button
                                 onClick={handleToggleVideo}
                                 aria-label={isVideoOff ? "Turn on camera" : "Turn off camera"}
-                                className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105 ${isVideoOff
-                                    ? "bg-gray-800 text-red-400 hover:bg-gray-700"
-                                    : "bg-gray-800 text-green-400 hover:bg-gray-700"
+                                className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105 bg-gray-800 hover:bg-gray-700
+                        ${isVideoOff
+                                        ? "text-gray-300 hover:text-red-400"
+                                        : "text-gray-300 hover:text-green-400"
                                     }`}
                             >
-                                {isVideoOff ? <VideoOff className="w-5 h-5 mb-1" /> : <Video className="w-5 h-5 mb-1" />}
+                                {isVideoOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
                                 <span className="text-xs font-medium">Camera</span>
                             </button>
                         </div>
@@ -638,49 +586,47 @@ const VideoCall: React.FC<VideoCallProps> = ({
                             <button
                                 onClick={handleInvite}
                                 aria-label="Copy invite link"
-                                className="flex flex-col items-center justify-center px-3 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-white transition-all duration-200 transform hover:scale-105"
+                                className="flex flex-col items-center justify-center px-3 py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-blue-300 transition-all duration-200 transform hover:scale-105"
                             >
-                                <Copy className="w-5 h-5 mb-1" />
+                                <Copy className="w-5 h-5" />
                                 <span className="text-xs font-medium">
                                     Invite
                                 </span>
                             </button>
                         </div>
 
-                        {/* Recording button */}
                         <div>
                             <button
                                 onClick={handleToggleRecording}
                                 aria-label={isRecording ? "Stop recording" : "Start recording"}
-                                className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105 ${isRecording
-                                    ? "bg-red-800 hover:bg-red-700 text-white"
-                                    : "bg-gray-800 hover:bg-gray-700 text-red-400"
+                                className={`flex flex-col items-center justify-center px-3 py-2 rounded-md transition-all duration-200 transform hover:scale-105
+                        ${isRecording
+                                        ? "bg-red-800 hover:bg-red-700 text-white"
+                                        : "bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-red-400"
                                     }`}
                             >
                                 {isRecording ?
-                                    <Square className="w-5 h-5 mb-1" /> :
-                                    <Circle className="w-5 h-5 mb-1" fill="currentColor" />
+                                    <Square className="w-5 h-5" /> :
+                                    <Circle className="w-5 h-5" fill="currentColor" />
                                 }
                                 <span className="text-xs font-medium">
                                     {isRecording ? "Stop" : "Record"}
                                 </span>
                             </button>
                         </div>
-                    </div>
-
-                    <div className="absolute right-4">
-                        <button
-                            onClick={() => setShowConfirmLeave(true)}
-                            aria-label="Leave call"
-                            className="flex items-center justify-center gap-1 px-3 py-2 rounded-md bg-red-700 hover:bg-red-800 text-white transition-all duration-200 transform hover:scale-105"
-                        >
-                            <PhoneOff className="w-5 h-5" />
-                            <span className="text-sm font-medium">Leave</span>
-                        </button>
+                        <div>
+                            <button
+                                onClick={() => setShowConfirmLeave(true)}
+                                aria-label="Leave call"
+                                className="flex flex-col items-center justify-center px-3 py-2 rounded-md bg-red-700 hover:bg-red-800 text-gray-300 transition-all duration-200 transform hover:scale-105"
+                            >
+                                <PhoneOff className="w-5 h-5" />
+                                <span className="text-xs font-medium">Leave</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </footer>
-
             {showConfirmLeave && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black/70 z-50 animate-fade-in">
                     <div className="bg-gray-900 rounded-lg shadow-xl w-80 p-4 transform transition-all duration-300 scale-100 opacity-100"
