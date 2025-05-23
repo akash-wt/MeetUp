@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { s3 } from '../lib/s3Client';
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const router = express.Router();
@@ -26,24 +26,45 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 //@ts-ignore
-router.get('/access', async (req: Request, res: Response) => {
-    const fileName = req.query.fileName as string;
+router.get('/videos', async (req: Request, res: Response) => {
+    const email = req.query.email as string;
 
-    if (!fileName) {
-        return res.status(400).json({ error: 'fileName is required' });
+    if (!email) {
+        return res.status(400).json({ error: 'email is required' });
     }
 
-    const command = new GetObjectCommand({
-        Bucket: 'meetup.wt',
-        Key: `recordings/${fileName}`
-    });
+    try {
+        const command = new ListObjectsV2Command({
+            Bucket: "meetup.wt",
+            Prefix: `recordings/${email}/`,
+        });
 
-    const url = await getSignedUrl(s3, command, { expiresIn: 600 });
+        const response = await s3.send(command);
 
-    res.json({ url });
+        const files = response.Contents?.filter(item => item.Key && !item.Key.endsWith('/')) || [];
+
+        if (files.length === 0) {
+            return res.status(404).json({ message: 'No videos found for this user.' });
+        }
+
+        const videoUrls = await Promise.all(
+            files.map(async (item) => {
+                const getCommand = new GetObjectCommand({
+                    Bucket: "meetup.wt",
+                    Key: item.Key,
+                    ResponseContentDisposition: 'attachment; filename="video.mp4"',
+                });
+                const signedUrl = await getSignedUrl(s3, getCommand, { expiresIn: 604800 });
+                return signedUrl;
+            })
+        );
+
+        return res.json({ videos: videoUrls });
+    } catch (err) {
+        console.error("Error listing videos:", err);
+        res.status(500).json({ error: 'Failed to get videos.' });
+    }
 });
-
-
 
 
 export default router;
