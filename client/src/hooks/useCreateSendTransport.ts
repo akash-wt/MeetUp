@@ -1,9 +1,7 @@
 import socket from '../lib/socket';
 import { createTransport } from './createTransport';
 import { types as mediasoupTypes } from "mediasoup-client";
-// import { useRecoilValue } from 'recoil';
-// import { currentDevice } from '../store/deviceState';
-import { useRef } from 'react';
+
 
 type TransportResponse = {
     id: string;
