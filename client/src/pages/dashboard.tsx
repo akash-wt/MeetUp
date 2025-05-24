@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Download, History, Play, Loader2, Calendar, Clock, HardDrive, Video, Sparkles, Users, Share2, FileVideo, Eye } from 'lucide-react';
+import { Plus, Download, History, Play, Loader2, Calendar, Clock, HardDrive, Video, Users, Share2, FileVideo } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';

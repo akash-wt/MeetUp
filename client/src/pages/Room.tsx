@@ -22,7 +22,6 @@ export default function Room() {
     const navigate = useNavigate();
 
     const [producer, setProducer] = useState<mediasoupTypes.Producer | null>(null);
-    const [producerTransport, setProducerTransport] = useState<mediasoupTypes.Transport | null>(null);
     const [consumerTransport, setConsumerTransport] = useState<mediasoupTypes.Transport | null>(null);
     const [device, setDevice] = useState<mediasoupTypes.Device | null>(null);
 
@@ -151,7 +150,7 @@ export default function Room() {
             }
 
             const sendTransport = await createSendTransport(roomId, "send", joinedDevice);
-            if (sendTransport) setProducerTransport(sendTransport);
+          
 
             const videoTrack = stream.getVideoTracks()[0];
             if (sendTransport && videoTrack) {
