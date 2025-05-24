@@ -20,9 +20,10 @@ const io = new Server(httpServer, { cors: { origin: "*" } });
 const PORT = 5080;
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL,
   credentials: true
 }));
+
 
 app.use(express.json());
 app.use(cookieParser());
