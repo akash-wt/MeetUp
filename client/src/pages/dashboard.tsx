@@ -3,6 +3,7 @@ import { Plus, Download, History, Play, Loader2, Calendar, Clock, HardDrive, Vid
 import { nanoid } from 'nanoid';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { BACKEND_URL } from '../config';
 
 
 interface Recording {
@@ -41,7 +42,7 @@ const Dashboard = () => {
 
             setLoadingVideos(true);
             try {
-                const response = await axios.get('http://localhost:5080/api/presign/videos', {
+                const response = await axios.get(`${BACKEND_URL}/api/presign/videos`, {
                     params: { email },
                 });
                 const data = response.data;

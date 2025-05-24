@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import axios from "axios";
+import { BACKEND_URL } from '../config';
 
 function Login() {
     const nevigate = useNavigate();
@@ -12,12 +13,12 @@ function Login() {
         setIsLoading(true);
         try {
 
-            await axios.post('http://localhost:5080/api/auth/google', {
+            await axios.post(`${BACKEND_URL}/api/auth/google`, {
                 id_token: credentialResponse.credential
             }, { withCredentials: true });
 
 
-            const res = await axios.get('http://localhost:5080/api/me', { withCredentials: true });
+            const res = await axios.get(`${BACKEND_URL}/api/me`, { withCredentials: true });
             localStorage.setItem('user', JSON.stringify(res.data));
 
             toast.info("Login Successfull!")

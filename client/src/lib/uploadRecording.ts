@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { BACKEND_URL } from '../config'
 
 const uploadRecording = async (
     recordedBlob: Blob,
@@ -18,7 +19,7 @@ const uploadRecording = async (
     const contentType = 'video/mp4'
 
     try {
-        const presignRes = await axios.get('http://localhost:5080/api/presign', {
+        const presignRes = await axios.get(`${BACKEND_URL}/api/presign`, {
             params: { fileName, contentType }
         })
 

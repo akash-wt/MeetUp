@@ -1,5 +1,6 @@
 import { io } from "socket.io-client";
+import { BACKEND_URL } from "../config";
 
-const socket = io("http://localhost:5080");
+const socket = io(BACKEND_URL);
 
 export default socket;
