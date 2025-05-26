@@ -17,7 +17,7 @@ Create `.env` files in server directory and in client directory create config.ts
 
 #### Client (config.ts)
 ```
- export const BACKEND_URL=your_backend_url
+export const BACKEND_URL=your_backend_url
 export const GOOGLE_CLIENT_ID=your_google_client_id
 ```
 
