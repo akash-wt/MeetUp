@@ -17,15 +17,12 @@ export const mediaCodecs: mediasoupTypes.RtpCodecCapability[] = [
 
 
 export const webRtcTransport_options: mediasoupTypes.WebRtcTransportOptions = {
-    listenIps:
-        process.env.NODE_ENV === 'production'
-            ? [
+    listenIps:[
                 {
                     ip: process.env.WEBRTC_LISTEN_IP || '127.0.0.1',
                     announcedIp: process.env.WEBRTC_ANNOUNCED_IP || '127.0.0.1',
                 },
-            ]
-            : [{ ip: '127.0.0.1' }],
+            ],
 
     enableUdp: true,
     enableTcp: true,

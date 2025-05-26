@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+ecosystem.config.js
 .env
 
 # Editor directories and files

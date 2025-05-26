@@ -20,7 +20,7 @@ const io = new Server(httpServer, { cors: { origin: "*" } });
 const PORT = 5080;
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+   origin: "https://meetup.akashwt.org",
   credentials: true
 }));
 

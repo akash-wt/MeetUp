@@ -35,9 +35,11 @@ router.post('/auth/google', async (req, res) => {
         res.cookie('token', token, {
             httpOnly: true,
             secure: true,
-            sameSite: 'strict',
+            sameSite: 'none',
+            domain: '.akashwt.org',
             maxAge: 6 * 24 * 60 * 60 * 1000
         });
+	console.log("finished auth google");
 
         return res.status(200).json({ message: 'Logged in successfully' });
     } catch (err) {

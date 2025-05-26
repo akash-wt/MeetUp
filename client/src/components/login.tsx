@@ -67,7 +67,7 @@ function Login() {
                                     <span className="ml-3 text-gray-300">Creating your account...</span>
                                 </div>
                             ) : (
-                                <div className="w-full">
+                                <div>
                                     <GoogleLogin
                                         onSuccess={handleSuccess}
                                         onError={handleError}
