@@ -13,12 +13,12 @@ A modern, feature-rich video conferencing application built with React, WebRTC, 
 
 ### Environment Variables
 
-Create `.env` files in both client and server directories:
+Create `.env` files in server directory and in client directory create config.ts:
 
-#### Client (.env)
+#### Client (config.ts)
 ```
-VITE_BACKEND_URL=your_backend_url
-VITE_GOOGLE_CLIENT_ID=your_google_client_id
+ export const BACKEND_URL=your_backend_url
+export const GOOGLE_CLIENT_ID=your_google_client_id
 ```
 
 #### Server (.env)
